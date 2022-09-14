@@ -10,10 +10,10 @@
 import sys, os
 
 try:
-    from    .               import pfdo
+    from    .               import mbox2m365
     from    .               import __pkg, __version__
 except:
-    from pfdo               import pfdo
+    from mbox2m365          import mbox2m365
     from __init__           import __pkg, __version__
 from    argparse            import RawTextHelpFormatter
 from    argparse            import ArgumentParser
@@ -25,130 +25,88 @@ from    pfmisc              import other
 
 str_desc = Colors.CYAN + """
 
-                                  __      _
-                                 / _|    | |
-                          _ __  | |_   __| |  ___
-                         | '_ \ |  _| / _` | / _ \
-                         | |_) || |  | (_| || (_) |
-                         | .__/ |_|   \__,_| \___/
-                         | |
-                         |_|
 
+                        _               ___            ____    __ _____ 
+                       | |             |__ \          |___ \  / /| ____|
+              _ __ ___ | |__   _____  __  ) |_ __ ___   __) |/ /_| |__  
+             | '_ ` _ \| '_ \ / _ \ \/ / / /| '_ ` _ \ |__ <| '_ \___ \ 
+             | | | | | | |_) | (_) >  < / /_| | | | | |___) | (_) |__) |
+             |_| |_| |_|_.__/ \___/_/\_\____|_| |_| |_|____/ \___/____/ 
+                                                            
+                                                            
 
+                        (unix) m(ail)box 2 (MS Outlook)365
 
-                          Path-File Do (something)
-
-        Recursively walk down a directory tree and perform some operation
-        on files in each directory (optionally filtered by some simple
-        expression). Results of each operation are saved in output tree
-        that  preserves the input directory structure.
-
+        This small python utility and module parses a standard (un*x) mailbox
+        file for a message, and then transmits that message using an authent-
+        icated m365 layer.
 
                              -- version """ + \
              Colors.YELLOW + __version__ + Colors.CYAN + """ --
 
-        'pfdo' is the base infrastructure app/class for walking down some
-        dir tree, optionally finding and tagging files that conform to
-        a simple filter, and running (something) on the files. This class
-        provides the basic mechanism for using pfree in this manner and the
-        (something) operation should be provided by a subclass of this base.
-
-        As part of the "pf*" suite of applications, it is geared to IO as
-        directories. Nested directory trees within some input directory
-        are reconstructed in an output directory, preserving directory
-        structure.
+        While useful in its own right as a standalone program, `mbox2m365` is
+        most optimally applied as part of a properly configured `postfix` mail
+        server. By assigning an (any) email client to use this `postfix` server
+        and by monitoring changes in the mbox file, it is possible to allow
 
 
 """ + Colors.NO_COLOUR
 
-package_CLI = """
-         -I|--inputDir <inputDir>                           \\
-         -O|--outputDir <outputDir>                         \\
-        [-i|--inputFile <inputFile>]                        \\
-        [-f|--fileFilter <filter1,filter2,...>]             \\
-        [-L|--filteFilterLogic AND|OR]                      \\
-        [-d|--dirFilter <filter1,filter2,...>]              \\
-        [--outputLeafDir <outputLeafDirFormat>]             \\
-        [--printElapsedTime]                                \\
-        [--threads <numThreads>]                            \\
-        [--test]                                            \\
-        [-x|--man]                                          \\
-        [-y|--synopsis]                                     \\
-        [--overwrite]                                       \\
-        [--followLinks]                                     \\
-        [--verbosity <verbosity>]                           \\
-        [--version]                                         \\
+package_CLIcore = """
+        [--inputDir <inputDir>]                                                 \\
+        [--outputDir <outputDir>]                                               \\
+        [--inputFile <inputFile>]                                               \\
+        [--printElapsedTime]                                                    \\
+        [--man]                                                                 \\
+        [--synopsis]                                                            \\
+        [--verbosity <verbosity>]                                               \\
+        [--version]                                                             \\
         [--json]
 """
 
-package_argSynopsis = """
-        -I|--inputDir <inputDir>
-        Input base directory to traverse.
+package_CLIself = '''
+        --mbox <mbox>                                                           \\
+        [--from <fromOverride]                                                  \\
+        [--parseMessageIndex <N>]                                               \\'''
 
-        -O|--outputDir <outputDir>
+package_argSynopsisSelf = """
+        --mbox <mbox>
+        The mbox file to process.
+
+        [--from <fromOverride]
+        Set the "from" string in the email header.
+
+        [--parseMessageIndex <N>]
+        Filter and send the message at index <N>. Default is `-1`, in other
+        words, the _last_ message in the queue.
+
+"""
+
+package_argSynopsisCore = """
+        [--inputDir <inputDir>]
+        Input base directory (default `/var/mail`)
+
+        [--outputDir <outputDir>]
         The output root directory that will contain a tree structure identical
         to the input directory, and each "leaf" node will contain the analysis
         results.
 
-        [-i|--inputFile <inputFile>]
-        An optional <inputFile> specified relative to the <inputDir>. If
-        specified, then do not perform a directory walk, but convert only
-        this file.
+        [--inputFile <inputFile>]
+        A specific file in the <inputDir> to process.
 
-        [-f|--fileFilter <someFilter1,someFilter2,...>]
-        An optional comma-delimated string to filter out files of interest
-        from the <inputDir> tree. Each token in the expression is applied in
-        turn over the space of files in a directory location according to a
-        logical operation, and only files that contain this token string in
-        their filename are preserved.
+        [--printElapsedTime]
+        If specified, print the program execution time duration.
 
-        [-L|--filteFilterLogic AND|OR]
-        The logical operator to apply across the fileFilter operation. Default
-        is OR.
-
-        [-d|--dirFilter <someFilter1,someFilter2,...>]
-        An additional filter that will further limit any files to process to
-        only those files that exist in leaf directory nodes that have some
-        substring of each of the comma separated <someFilter> in their
-        directory name.
-
-        [--outputLeafDir <outputLeafDirFormat>]
-        If specified, will apply the <outputLeafDirFormat> to the output
-        directories containing data. This is useful to blanket describe
-        final output directories with some descriptive text, such as
-        'anon' or 'preview'.
-
-        This is a formatting spec, so
-
-            --outputLeafDir 'preview-%s'
-
-        where %s is the original leaf directory node, will prefix each
-        final directory containing output with the text 'preview-' which
-        can be useful in describing some features of the output set.
-
-        [--test]
-        If specified, run the "dummy" internal callback loop triad. The test
-        flow simply tags files in some inputDir tree and "touches" them to a
-        reconstiuted tree in the output directory, prefixed with the text
-        "analyzed-".
-
-        [--threads <numThreads>]
-        If specified, break the innermost analysis loop into <numThreads>
-        threads.
-
-        [-x|--man]
+        [--man]
         Show full help.
 
-        [-y|--synopsis]
+        [--synopsis]
         Show brief help.
 
         [--json]
         If specified, output a JSON dump of final return.
 
-        [--followLinks]
-        If specified, follow symbolic links.
-
-        [-v|--verbosity <level>]
+        [--verbosity <level>]
         Set the app verbosity level.
 
             0: No internal output;
@@ -166,57 +124,32 @@ def synopsis(ab_shortOnly = False):
     shortSynopsis =  """
     NAME
 
-        pfdo                                                \\
+        mbox2m365                                                               \\
 
     SYNOPSIS
 
-        pfdo """ + package_CLI + """
+        mbox2m365 """ + package_CLIself + package_CLIcore + """
 
     BRIEF EXAMPLE
 
-        pfdo                                                \\
-            -I /var/www/html/data -f jpg                    \\
-            -O /var/www/html/jpg                            \\
-            --threads 0 --printElapsedTime
+        cd /var/mail
+        find rudolph | entr mbox2m365 --inputFile rudolph
     """
 
     description =  '''
     DESCRIPTION
 
-        ``pfdo`` provides the base mechanism for navigating some arbitrary
-        tree, providing the base hooks for operating on (possibly filtered)
-        files in each directory, and saving results in an output tree that
-        reflects the input tree topology.
+        ``mbox2m365`` allows for selective filtering of a message in an mbox
+        format mail file and the re-transmission of that message using Outlook
+        via the ``m365`` command line utility tool.
 
-    ARGS ''' + package_argSynopsis + '''
+    ARGS ''' + package_argSynopsisCore + package_argSynopsisSelf + '''
 
 
     EXAMPLES
 
-    Perform a `pfdo` down some input directory:
-
-        pfdo                                                \\
-            -I /var/www/html/data -f jpg                    \\
-            -O /tmp/jpg --test --json                       \\
-            --threads 0 --printElapsedTime
-
-    The above will find all files in the tree structure rooted at
-    /var/www/html/data that also contain the string "jpg" anywhere
-    in the filename. For each file found, a corresponding file will
-    be touched in the output directory, in the same tree location as
-    the original input. This touched file will be prefixed with the
-    string "analyzed-".
-
-        pfdo                                                \\
-            -I $(pwd)/raw  -d 100307 -f " "                 \\
-            -O $(pwd)/out --test --json                     \\
-            --threads 0 --printElapsedTime
-
-    This will consider each directory in the input tree space that
-    contains files, but will "tag" any leaf node directory that
-    contains the string "100307" with a tag "file" "%d-100307".
-
-    Finally the elapsed time and a JSON output are printed.
+        cd /var/mail
+        find rudolph | entr mbox2m365 --inputFile rudolph
 
     '''
 
@@ -225,85 +158,72 @@ def synopsis(ab_shortOnly = False):
     else:
         return shortSynopsis + description
 
-parser  = ArgumentParser(description = str_desc, formatter_class = RawTextHelpFormatter)
+parserCore  = ArgumentParser(description        = 'Core I/O',
+                             formatter_class    = RawTextHelpFormatter,
+                             add_help           = False)
+parserSelf  = ArgumentParser(description        = 'Self specific',
+                             formatter_class    = RawTextHelpFormatter,
+                             add_help           = False)
 
-parser.add_argument("-I", "--inputDir",
-                    help    = "input dir",
-                    dest    = 'inputDir')
-parser.add_argument("-i", "--inputFile",
-                    help    = "input file",
-                    dest    = 'inputFile',
+parserSelf.add_argument("--mbox",
+                    help    = "the mbox file to analze",
+                    dest    = 'mbox',
                     default = '')
-parser.add_argument("-f", "--fileFilter",
-                    help    = "a list of comma separated string filters to apply across the input file space",
-                    dest    = 'fileFilter',
+parserSelf.add_argument("--from",
+                    help    = "from field override",
+                    dest    = 'fromOverride',
                     default = '')
-parser.add_argument("-l", "--fileFilterLogic",
-                    help    = "the logic to apply across the file filter",
-                    dest    = 'fileFilterLogic',
-                    default = 'OR')
-parser.add_argument("-d", "--dirFilter",
-                    help    = "a list of comma separated string filters to apply across the input dir space",
-                    dest    = 'dirFilter',
-                    default = '')
-parser.add_argument("-O", "--outputDir",
-                    help    = "output image directory",
-                    dest    = 'outputDir',
-                    default = '')
-parser.add_argument("--printElapsedTime",
+parserSelf.add_argument("--parseMessageIndex",
+                    help    = "parse message at given index",
+                    dest    = 'parseMessageIndex',
+                    default = '-1')
+parserSelf.add_argument("--printElapsedTime",
                     help    = "print program run time",
                     dest    = 'printElapsedTime',
                     action  = 'store_true',
                     default = False)
-parser.add_argument("--threads",
-                    help    = "number of threads for innermost loop processing",
-                    dest    = 'threads',
-                    default = "0")
-parser.add_argument("--outputLeafDir",
-                    help    = "formatting spec for output leaf directory",
-                    dest    = 'outputLeafDir',
-                    default = "")
-parser.add_argument("--test",
-                    help    = "test",
-                    dest    = 'test',
-                    action  = 'store_true',
-                    default = False)
-parser.add_argument("-x", "--man",
+
+parserCore.add_argument("--inputDir",
+                    help    = "input dir",
+                    dest    = 'inputDir',
+                    default = '/var/mail')
+parserCore.add_argument("--inputFile",
+                    help    = "input file",
+                    dest    = 'inputFile',
+                    default = '')
+parserCore.add_argument("--outputDir",
+                    help    = "output image directory",
+                    dest    = 'outputDir',
+                    default = '')
+parserCore.add_argument("--man",
                     help    = "man",
                     dest    = 'man',
                     action  = 'store_true',
                     default = False)
-parser.add_argument("-y", "--synopsis",
+parserCore.add_argument("--synopsis",
                     help    = "short synopsis",
                     dest    = 'synopsis',
                     action  = 'store_true',
                     default = False)
-parser.add_argument("--json",
+parserCore.add_argument("--json",
                     help    = "output final return in json",
                     dest    = 'json',
                     action  = 'store_true',
                     default = False)
-parser.add_argument("--overwrite",
-                    help    = "overwrite files if already existing",
-                    dest    = 'overwrite',
-                    action  = 'store_true',
-                    default = False)
-parser.add_argument("--followLinks",
-                    help    = "follow symbolic links",
-                    dest    = 'followLinks',
-                    action  = 'store_true',
-                    default = False)
-parser.add_argument("-v", "--verbosity",
+parserCore.add_argument("--verbosity",
                     help    = "verbosity level for app",
                     dest    = 'verbosity',
                     default = "1")
-parser.add_argument('--version',
+parserCore.add_argument('--version',
                     help    = 'if specified, print version number',
                     dest    = 'b_version',
                     action  = 'store_true',
                     default = False)
 
 def main(argv=None):
+    parser  = ArgumentParser(description        = str_desc,
+                             formatter_class    = RawTextHelpFormatter,
+                             parents            = [parserCore, parserSelf])
     args = parser.parse_args()
     if args.man or args.synopsis:
         print(str_desc)
@@ -312,25 +232,26 @@ def main(argv=None):
         else:
             str_help     = synopsis(True)
         print(str_help)
-        sys.exit(1)
+        return 1
 
     if args.b_version:
         print("Name:    %s\nVersion: %s" % (__pkg.name, __version__))
-        sys.exit(1)
+        return 1
 
-    args.str_version    = __version__
-    args.str_desc       = synopsis(True)
+    args.version        = __version__
+    args.name           = __pkg.name
+    args.desc           = synopsis(True)
 
-    pf_do               = pfdo.pfdo(vars(args))
+    mbox_2_m365         = mbox2m365.Mbox2m365(vars(args))
 
     # And now run it!
     # pudb.set_trace()
-    d_pfdo              = pf_do.run(timerStart = True)
+    d_mbox2m365         = mbox_2_m365.run(timerStart = True)
 
     if args.printElapsedTime:
-        pf_do.dp.qprint(
+        mbox_2_m365.log(
                 "Elapsed time = %f seconds" %
-                d_pfdo['runTime']
+                d_mbox2m365['runTime']
         )
 
     return 0
