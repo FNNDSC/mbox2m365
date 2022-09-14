@@ -2,17 +2,19 @@
 
 == Abstract
 
-This repository contains a simple python script that processes an ``mbox`` style mailbox file and parses out (typically) the last message and then re-transmits this using the CLI `m365` tools. While this script can be used in a completely stand-alone manner to extract a message from an ``mbox`` and restransmit this using ``m365``, it's main utility is when used in the manner described below.
+This repository contains a simple python script that processes an ``mbox`` style mailbox file and parses out (typically) the last message and then re-transmits this using the CLI `m365` tools. While this script can be used in a completely stand-alone manner to extract a message from an ``mbox`` and then _send_ using ``m365``, it's main utility is when used in a full ecosystem including an email client and ``postfix`` server.
+
+The CLI ``m365`` offers the ability to use Outlook/Office365 to send emails. However, this tool is not suited to use as a mail client -- it merely offers a means to transmit a message from the command line. More useful would be if existing mail clients could leverage ``m365`` natively. Currently, however, this is not available. Therefore, ``mbox2m365`` was created to complete a "missing link" in a full email experience. Using this tool in a configured environment, it is now possible to use _any_ email client to transmit messages using Outlook/Office365.
 
 == TL;DR
 
-Even if you're impatient, it's a good idea to read this document. However, assuming you've already built the infrastructure, have installed ``m365`` (and logged into your Institution from ``m365``), have setup your email client to email to a dummy local postfix account, then you can install ``mbox2m365`` with a simple
+Even if you're impatient, it's a good idea to read this document. However, assuming you've already built the infrastructure, assuming you have installed ``m365`` (and logged into your Institution from ``m365``), have assuming you have setup your email client to email to a dummy local postfix account, then you can install ``mbox2m365`` with a simple
 
 ```bash
 pip install mbox2m365
 ```
 
-and run by setting up the monitor on the ``mbox`` file
+and fire it off by setting up the monitor on the ``mbox`` file
 
 ```bash
 cd /var/mail
@@ -67,7 +69,7 @@ Reading emails that are locked away in an Outlook server is best effected by sim
 
 === Sending email
 
-The message is now outside of Outlook, and if the Institution does not allow non-authorized clients (often this means they only allow Microsoft tools) to connect to the Outlook server, the following work around will help. Essentially, the outside client should be configed to send email using a properly configured ``postfix`` server that simply copies the target email to an ``mbox`` file.
+The message is now outside of Outlook, and if the Institution does not allow non-authorized clients (often this means they only allow Microsoft tools) to connect to the Outlook server, the following work around will help. Essentially, the outside client should be configured to send email using a properly setup ``postfix`` server that simply copies the target email to an ``mbox`` file.
 
 This ``mbox`` file is then monitored for any changes, and on a change (assumed to mean a new email message has been appended), a new process is fired off to parse off the latest message and then use the command line ``m365`` CLI tool to have the IOS send the email.
 
@@ -110,6 +112,7 @@ Again, this repo contains **no** authentication tokens/passwords/etc.
 
 == ``mbox2m365``
 
-While all the building block to effect the solution exist, the one missing piece is the ``mbox`` to ``m365`` block, which is provided for by this repo.
+While all the building blocks to effect the solution exist, the one missing piece is the ``mbox`` to ``m365`` block, which is provided for by this rather simple python script.
+
 
 
