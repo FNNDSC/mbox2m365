@@ -2,7 +2,7 @@
 
 == Abstract
 
-This repository contains a simple python script that processes an ``mbox`` style mailbox file and parses out (typically) the last message and then re-transmits this using the CLI `m365` tools. While this script can be used in a completely stand-alone manner to extract a message from an ``mbox`` and then _send_ using ``m365``, it's main utility is when used in a full ecosystem including an email client and ``postfix`` server.
+This repository contains a simple python script that (1) processes an ``mbox`` style mailbox file, (2) parses out (typically) the last message and then (3) re-transmits this using the CLI `m365` toolset. While this script can be used in a completely stand-alone manner to extract a message from an ``mbox`` and then _send_ using ``m365``, it's main utility is when used in a full ecosystem including an email client and ``postfix`` server.
 
 The CLI ``m365`` offers the ability to use Outlook/Office365 to send emails. However, this tool is not suited to use as a mail client -- it merely offers a means to transmit a message from the command line. More useful would be if existing mail clients could leverage ``m365`` natively. Currently, however, this is not available. Therefore, ``mbox2m365`` was created to complete a "missing link" in a full email experience. Using this tool in a configured environment, it is now possible to use _any_ email client to transmit messages using Outlook/Office365.
 
@@ -113,6 +113,55 @@ Again, this repo contains **no** authentication tokens/passwords/etc.
 == ``mbox2m365``
 
 While all the building blocks to effect the solution exist, the one missing piece is the ``mbox`` to ``m365`` block, which is provided for by this rather simple python script.
+
+== Setup
+
+First, install ``postfix``
+
+=== Arch
+
+```bash
+yay -S postfix
+```
+
+=== Ubuntu
+
+```bash
+sudo apt install postfix
+```
+== ``transport``
+
+Now, edit the ``transport`` file.
+
+```bash
+sudo bash
+cd /etc/postfix
+cp transport transport.orig
+echo "* local:rudolph" >> transport
+```
+
+== ``main.cf``
+
+For the ``main.cf`` file, do
+
+```bash
+# Assuming you are still in the /etc/postfix dir in a sudo bash shell...
+cp main.cf main.cf.orig
+echo "mydomain = pangea.net" >> main.cf
+echo "luser_relay = rudolph@pangea.net"
+echo "transport_maps = hash:/etc/postfix/transport" >> main.cf
+```
+
+== enable/restart the services
+
+```bash
+sudo systemctl enable postfix.service
+sudo systemctl restart postfix.service
+```
+
+== Email client
+
+Simply configure your email client to use the machine running ``postfix`` as your email server. All emails will be appended to the ``transport`` user's ``mbox`` file.
 
 
 
