@@ -21,7 +21,17 @@ cd /var/mail
 find . | entr mbox2m365 --mbox rudolph
 ```
 
+(Clearly the above relies on ``entr``. Consult your distro's repos for the appropriate install. In arch, this is ``yay -S entr``, in Ubuntu, this is ``sudo apt install entr``)
 
+== Security alert!
+
+Wait! **Danger, Will Robinson**! Doesn't this violate security policies? I was told my Institution does _not_ allow clients like thunderbird to connect to the Outlook server to send emails!
+
+Well, the devil is in the details as the saying goes. This solution does _not_ violate policy since the "unauthenticated" email client is _not_ ever connecting/authenticating to the Outlook server. Rather, the "unauthenticated" email client sends messages to a specially configured server that "saves" the emails to a file. Then, a separate program teases out the new arrivals and uses the *authenticated* ``m365`` program to actually talk to and leverage Outlook to send the email. This _separate program_ that bridges the mail file to ``m365`` is non other than this python module.
+
+So to be pendantic: all credentialing and authentication is handled by ``m365`` and _not_ this tool. The end user is still required to login/authenticate using ``m365``. If this has not happened, then ``mbox2m365`` will not work.
+
+Again, this repo contains **no** authentication tokens/passwords/etc.
 
 == Introduction
 
@@ -103,12 +113,6 @@ This ``mbox`` file is then monitored for any changes, and on a change (assumed t
 │IOS that transmits outgoing email│
 └─────────────────────────────────┘
 ```
-
-== Security alert!
-
-Wait! Doesn't this violate security policies? Doesn't ``mbox2m365`` bypass instition authentication/etc? At first blush this might seem the case, however _no policy is violated_. All credentialing and authentication is handled by ``m365`` and _not_ this tool. The end user is still required to login/authenticate using ``m365``. If this has not happened, then ``mbox2m365`` will not work.
-
-Again, this repo contains **no** authentication tokens/passwords/etc.
 
 == ``mbox2m365``
 

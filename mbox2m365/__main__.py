@@ -13,7 +13,7 @@ try:
     from    .               import mbox2m365
     from    .               import __pkg, __version__
 except:
-    from mbox2m365          import mbox2m365
+    from mbox2m365          import Mbox2m365
     from __init__           import __pkg, __version__
 from    argparse            import RawTextHelpFormatter
 from    argparse            import ArgumentParser
@@ -66,20 +66,16 @@ package_CLIcore = """
 
 package_CLIself = '''
         --mbox <mbox>                                                           \\
-        [--from <fromOverride]                                                  \\
-        [--parseMessageIndex <N>]                                               \\'''
+        [--parseMessageIndices <M,N,...>]                                       \\'''
 
 package_argSynopsisSelf = """
         --mbox <mbox>
         The mbox file to process.
 
-        [--from <fromOverride]
-        Set the "from" string in the email header.
-
-        [--parseMessageIndex <N>]
-        Filter and send the message at index <N>. Default is `-1`, in other
-        words, the _last_ message in the queue.
-
+        [--parseMessageIndices <M,N,...>]
+        Instead of processing "new" messages in the mbox, explicitly
+        filter and send the message at the specified key indices <M>, <N>...
+        This is comma-separated string.
 """
 
 package_argSynopsisCore = """
@@ -169,14 +165,10 @@ parserSelf.add_argument("--mbox",
                     help    = "the mbox file to analze",
                     dest    = 'mbox',
                     default = '')
-parserSelf.add_argument("--from",
-                    help    = "from field override",
-                    dest    = 'fromOverride',
+parserSelf.add_argument("--parseMessageIndices",
+                    help    = "parse messages at given indices",
+                    dest    = 'parseMessageIndices',
                     default = '')
-parserSelf.add_argument("--parseMessageIndex",
-                    help    = "parse message at given index",
-                    dest    = 'parseMessageIndex',
-                    default = '-1')
 parserSelf.add_argument("--printElapsedTime",
                     help    = "print program run time",
                     dest    = 'printElapsedTime',
@@ -242,10 +234,13 @@ def main(argv=None):
     args.name           = __pkg.name
     args.desc           = synopsis(True)
 
-    mbox_2_m365         = mbox2m365.Mbox2m365(vars(args))
+    try:
+        mbox_2_m365         = Mbox2m365(vars(args))
+    except:
+        mbox_2_m365         = mbox2m365.Mbox2m365(vars(args))
+    mbox_2_m365.log('Messaging object successfully created.')
 
     # And now run it!
-    # pudb.set_trace()
     d_mbox2m365         = mbox_2_m365.run(timerStart = True)
 
     if args.printElapsedTime:
