@@ -256,7 +256,7 @@ Content-Transfer-Encoding: {content_encoding}
 """
 
         str_body        : str   = ""
-        bodyFirst               = "This is a multi-part message in MIME format."
+        bodyFirst               = "This is a multi-part message in MIME format." + '\n'
         for part in message.walk():
             content_type        = part.get_content_type()
             content_disposition = str(part.get("Content-Disposition"))
