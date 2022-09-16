@@ -27,8 +27,7 @@ import      shutil
 
 import      time
 import      base64
-from        io                  import BytesIO, StringIO
-import      gzip
+import      re
 
 class Mbox2m365(object):
     """
@@ -217,8 +216,17 @@ class Mbox2m365(object):
         Save the message to a file. In such a case m365 will be instructed
         to transmit the email from this file.
         """
-        str_subjNoSpace     : str   = self.d_m365['subject'].replace(" ", "")
-        self.emailFile              = self.configPath / Path(str_subjNoSpace + ".txt")
+        def urlify(s):
+            # Remove all non-word characters (everything except numbers and letters)
+            s = re.sub(r"[^\w\s]", '', s)
+
+            # Replace all runs of whitespace with a single dash
+            s = re.sub(r"\s+", '-', s)
+            return s
+
+
+        str_subjClean       : str   = urlify(self.d_m365['subject'])
+        self.emailFile              = self.configPath / Path(str_subjClean + ".txt")
         with open(str(self.emailFile), "w") as f:
             f.write(message)
 
@@ -231,8 +239,24 @@ class Mbox2m365(object):
         def chunkstring(string, length):
             return (string[0+i:length+i] for i in range(0, len(string), length))
 
+        def boundaryHeader_generate():
+            nonlocal boundary, content_type, content_disposition, content_encoding
+            return f"""
+--------------{boundary}
+Content-Type: {content_type}{filename}
+Content-Disposition: {content_disposition}
+Content-Transfer-Encoding: {content_encoding}
+
+"""
+
+        def boundaryFooter_generate():
+            nonlocal boundary
+            return f"""
+--------------{boundary}--
+"""
+
         str_body        : str   = ""
-        bodyPart                = ""
+        bodyFirst               = "This is a multi-part message in MIME format."
         for part in message.walk():
             content_type        = part.get_content_type()
             content_disposition = str(part.get("Content-Disposition"))
@@ -246,20 +270,13 @@ class Mbox2m365(object):
                 self.log('bodyPart attached after decode()', comms = 'status')
             except:
                 if self.args['b64_encode']:
-                    bodyPart = part.get_payload(decode = True)
+                    bodyPart                = part.get_payload(decode = True)
                     if bodyPart:
                         boundary            = f'{make_msgid()}'
                         try:
                             filename        = f"; name={part.get_filename()}"
                         except:
                             filename        = ""
-                        bodyPartHeader      = f"""
---------------{boundary}
-Content-Type: {content_type}{filename}
-Content-Disposition: {content_disposition}
-Content-Transfer-Encoding: {content_encoding}
-
-"""
                         self.log('Encoding into base64 "ascii" for retransmission')
                         self.log('Original (<type>, <size>) = (%s, %s)' % \
                                     (type(bodyPart), len(bodyPart)))
@@ -272,16 +289,16 @@ Content-Transfer-Encoding: {content_encoding}
                         bodyPartFixedWidth  = ""
                         for chunk in chunkstring(bodyPart, length):
                             bodyPartFixedWidth  += chunk + '\n'
-                        bodyPart    = bodyPartHeader + bodyPartFixedWidth + f"""
---------------{boundary}--
-"""
+                        bodyPart    = boundaryHeader_generate() + \
+                                      bodyPartFixedWidth        + \
+                                      boundaryFooter_generate()
                     else:
                         bodyPart    = ""
                 else:
                     self.log('bodyPart attachment skipped!', comms = 'status')
                     bodyPart    = ""
             str_body += str(bodyPart)
-        return str_body
+        return bodyFirst + '\n' + str_body
 
     def message_parse(self, d_extract):
         """
