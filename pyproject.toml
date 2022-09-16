@@ -2,7 +2,7 @@
 
 [project]
 name            = "mbox2m365"
-version         = "1.0.4"
+version         = "1.2.0"
 
 [build-system]
 requires        = ["setuptools>=42", "wheel"]   # PEP 508 specifications.
