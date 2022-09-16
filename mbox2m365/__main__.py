@@ -165,6 +165,16 @@ parserSelf.add_argument("--mbox",
                     help    = "the mbox file to analze",
                     dest    = 'mbox',
                     default = '')
+parserCore.add_argument("--b64_encode",
+                    help    = "encode all attachments as explicit inline base64",
+                    dest    = 'b64_encode',
+                    action  = 'store_true',
+                    default = False)
+parserCore.add_argument("--sendFromFile",
+                    help    = "save the email to a file first, and then transmit this file",
+                    dest    = 'sendFromFile',
+                    action  = 'store_true',
+                    default = False)
 parserSelf.add_argument("--parseMessageIndices",
                     help    = "parse messages at given indices",
                     dest    = 'parseMessageIndices',
@@ -238,6 +248,7 @@ def main(argv=None):
         mbox_2_m365         = Mbox2m365(vars(args))
     except:
         mbox_2_m365         = mbox2m365.Mbox2m365(vars(args))
+    mbox_2_m365.log("%s:%s waking up!" % (__pkg.name, __version__), comms = 'tx')
     mbox_2_m365.log('Messaging object successfully created.')
 
     # And now run it!

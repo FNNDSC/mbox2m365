@@ -17,12 +17,18 @@ from        pfmisc              import  error
 
 import      pudb
 import      mailbox
+from        email.utils         import  make_msgid
 
 import      pathlib
 
 from        jobber              import  jobber
 from        appdirs             import  *
 import      shutil
+
+import      time
+import      base64
+from        io                  import BytesIO, StringIO
+import      gzip
 
 class Mbox2m365(object):
     """
@@ -74,6 +80,7 @@ class Mbox2m365(object):
         self.configPath         : Path  = '/'
         self.keyParsedFile      : Path  = 'someFile.json'
         self.transmissionCmd    : Path  = 'someFile.rec'
+        self.emailFile          : Path  = 'someFile.txt'
         self.l_keysParsed       : list  = []
         self.l_keysInMbox       : list  = []
         self.l_keysToParse      : list  = []
@@ -205,17 +212,96 @@ class Mbox2m365(object):
             'index':    index
         }
 
+    def multipart_saveToFile(self, message):
+        """
+        Save the message to a file. In such a case m365 will be instructed
+        to transmit the email from this file.
+        """
+        str_subjNoSpace     : str   = self.d_m365['subject'].replace(" ", "")
+        self.emailFile              = self.configPath / Path(str_subjNoSpace + ".txt")
+        with open(str(self.emailFile), "w") as f:
+            f.write(message)
+
+    def multipart_appendSimply(self, message):
+        """
+        Simple (naive) multipart handler. If sending a multipart message
+        this attempts to base64 encode any attachments and append them
+        into the message
+        """
+        def chunkstring(string, length):
+            return (string[0+i:length+i] for i in range(0, len(string), length))
+
+        str_body        : str   = ""
+        bodyPart                = ""
+        for part in message.walk():
+            content_type        = part.get_content_type()
+            content_disposition = str(part.get("Content-Disposition"))
+            content_encoding    = str(part.get("Content-Transfer-Encoding"))
+            self.log("Processing multipart message...")
+            self.log("Content-Type: " + f"{content_type}")
+            self.log("Content-Disposition: " + f"{content_disposition}")
+            self.log("Content-Transfer-Encoding: " + f"{content_encoding}")
+            try:
+                bodyPart = part.get_payload(decode = True).decode()
+                self.log('bodyPart attached after decode()', comms = 'status')
+            except:
+                if self.args['b64_encode']:
+                    bodyPart = part.get_payload(decode = True)
+                    if bodyPart:
+                        boundary            = f'{make_msgid()}'
+                        try:
+                            filename        = f"; name={part.get_filename()}"
+                        except:
+                            filename        = ""
+                        bodyPartHeader      = f"""
+--------------{boundary}
+Content-Type: {content_type}{filename}
+Content-Disposition: {content_disposition}
+Content-Transfer-Encoding: {content_encoding}
+
+"""
+                        self.log('Encoding into base64 "ascii" for retransmission')
+                        self.log('Original (<type>, <size>) = (%s, %s)' % \
+                                    (type(bodyPart), len(bodyPart)))
+
+                        bytes_b64   = base64.b64encode(bodyPart)
+                        bodyPart    = bytes_b64.decode("ascii")
+                        self.log('Encoded (<type>, <size>) = (%s, %s)' % \
+                                    (type(bodyPart), len(bodyPart)))
+                        length      = 72
+                        bodyPartFixedWidth  = ""
+                        for chunk in chunkstring(bodyPart, length):
+                            bodyPartFixedWidth  += chunk + '\n'
+                        bodyPart    = bodyPartHeader + bodyPartFixedWidth + f"""
+--------------{boundary}--
+"""
+                    else:
+                        bodyPart    = ""
+                else:
+                    self.log('bodyPart attachment skipped!', comms = 'status')
+                    bodyPart    = ""
+            str_body += str(bodyPart)
+        return str_body
+
     def message_parse(self, d_extract):
         """
         Populate the internal self.d_m365 payload
         """
         b_status        : bool  = False
+        message                 = None
         if d_extract['status']:
             self.d_m365['subject']      = self.o_msg['Subject']
             self.d_m365['to']           = self.o_msg['Delivered-To']
-            self.d_m365['bodyContents'] = self.o_msg.get_payload()
+            if self.o_msg.is_multipart():
+                message                 = self.multipart_appendSimply(self.o_msg)
+            else:
+                message                 = self.o_msg.get_payload()
+            if self.args['sendFromFile']:
+                self.multipart_saveToFile(message)
+                self.log('Email saved to %s' % self.emailFile)
+            self.d_m365['bodyContents'] = message
             b_status    = True
-        self.log(
+            self.log(
                 "Parsed message to '%s' re '%s'" % (
                                 self.d_m365['to'],
                                 self.d_m365['subject']
@@ -230,7 +316,8 @@ class Mbox2m365(object):
 
     def message_transmit(self, d_parse):
         """
-        Transmit the actual message
+        Transmit the actual message -- either directly on the CLI or
+        from a created file...
         """
         b_status        : bool  = False
         str_m365        : str   = ""
@@ -238,15 +325,17 @@ class Mbox2m365(object):
         # pudb.set_trace()
         if d_parse['status']:
             shell       = jobber.jobber({'verbosity': 1, 'noJobLogging': True})
+            if self.args['sendFromFile']:
+                self.d_m365['bodyContents'] = f'@{self.emailFile}'
             str_m365    = """#!/bin/bash
 
             m365 outlook mail send -s '%s' -t %s --bodyContents '%s'
             """ % \
-                                  (
-                                    self.d_m365['subject'],
-                                    self.d_m365['to'],
-                                    self.d_m365['bodyContents']
-                                  )
+                    (
+                      self.d_m365['subject'],
+                      self.d_m365['to'],
+                      self.d_m365['bodyContents']
+                    )
             with open(self.transmissionCmd, "w") as f:
                 f.write(f'%s' % str_m365)
             self.transmissionCmd.chmod(0o755)
@@ -271,31 +360,47 @@ class Mbox2m365(object):
 
     def run(self, *args, **kwargs) -> dict:
 
-        b_status        : bool  = False
-        b_timerStart    : bool  = False
-        d_env           : dict  = {}
-        ld_send         : list  = []
-        d_filter        : dict  = {}
-        b_JSONprint     : bool  = True
+        b_status            : bool  = False
+        b_timerStart        : bool  = False
+        d_env               : dict  = {}
+        ld_send             : list  = []
+        d_filter            : dict  = {}
+        b_JSONprint         : bool  = True
+        b_catchStragglers   : bool  = True
+        d_env               : dict  = self.env_check()
 
-        d_env           : dict  = self.env_check()
         if d_env['status']:
             for k, v in kwargs.items():
                 if k == 'timerStart':   b_timerStart    = bool(v)
                 if k == 'JSONprint':    b_JSONprint     = bool(v)
 
             if b_timerStart:    other.tic()
-            for message in self.message_listToProcess():
-                ld_send.append(
-                    self.message_transmit(
-                        self.message_parse(
-                            self.message_extract(message)
+            while b_catchStragglers:
+                for message in self.message_listToProcess():
+                    ld_send.append(
+                        self.message_transmit(
+                            self.message_parse(
+                                self.message_extract(message)
+                            )
                         )
                     )
+                    self.l_keysTransmitted.append(message)
+                self.l_keysParsed.extend(self.l_keysTransmitted)
+                # Now check the environment again to grab any "stragglers"
+                # i.e. emails that might have appeared *while* we checked the
+                # first time
+                self.state_save()
+                self.log(
+                    "Checking for stragglers that might have snuck in while we were processing...",
+                    comms = 'tx'
                 )
-                self.l_keysTransmitted.append(message)
-            self.l_keysParsed.extend(self.l_keysTransmitted)
-            self.state_save()
+                d_env   = self.env_check()
+                if not len(self.message_listToProcess()):
+                    b_catchStragglers = False
+                    self.log(
+                        "No stragglers found... going back to sleep!",
+                        comms = 'rx'
+                    )
         d_ret           : dict = {
             'env'       : d_env,
             'runTime'   : other.toc(),
