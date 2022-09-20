@@ -14,14 +14,16 @@ Even if you're impatient, it's a good idea to read this document. However, assum
 pip install mbox2m365
 ```
 
-and fire it off by setting up the monitor on the ``mbox`` file
+and fire it off by setting up the monitor on the ``mbox`` file (here we assume the mbox belongs to ``rudolph``)
 
 ```bash
 cd /var/mail
-find . | entr mbox2m365 --mbox rudolph
+find . | entr mbox2m365 --mbox rudolph --b64_encode         \
+                        --sendFromFile --cleanUp            \
+                        --waitForStragglers 5
 ```
 
-(Clearly the above relies on ``entr``. Consult your distro's repos for the appropriate install. In arch, this is ``yay -S entr``, in Ubuntu, this is ``sudo apt install entr``)
+(Clearly the above relies on https://github.com/eradman/entr[``entr``]. Consult your distro's repos for the appropriate install. In arch, this is ``yay -S entr``, in Ubuntu, this is ``sudo apt install entr``)
 
 == Security alert!
 
@@ -32,6 +34,16 @@ Well, the devil is in the details as the saying goes. This solution does _not_ v
 So to be pendantic: all credentialing and authentication is handled by ``m365`` and _not_ this tool. The end user is still required to login/authenticate using ``m365``. If this has not happened, then ``mbox2m365`` will not work.
 
 Again, this repo contains **no** authentication tokens/passwords/etc.
+
+== Limitations
+
+Let's get these out of the way first. This is _not_ a full solution for linking a third party email client to Outlook. It gets _close_, IMHO. Fundmanentally, this solution is limited first and foremost by the capabilities of the CLI ``m365 outlook mail send`` functionality. At time of writing this does not fully support _bcc_ but most limiting, it **does not support attachments**. Should ``m365`` be updated to support https://github.com/pnp/cli-microsoft365/issues/3422[attachments], then this bridge will be updated accordingly.
+
+On the attachment front, this bridge does attempt however to create mostly conformant MIME emails with attachments encoded in base64. Since it is not possible to manipulate the outgoing header, attachments appear directly in the body of the email. In theory, it should be possible for a recipient to base64 unencode the in-line attachment, but this is probably a bridge way too far for most people. Still, it _is_ possible.
+
+Other limitations stem from the fact the bridge needs to process the ``mbox`` file _de novo_ each time mail is received by the helper server. This means that time to process will increase linearly with ``mbox`` size. The real world implications of this are still being explored.
+
+Finally, the bridge does make a best effort attempt to _wait_ until the ``mbox`` has stabilized before analyzing it. When sending emails to multiple recipients, _each_ recipient gets a single complete copy in the ``mbox`` with a single address (the multiple recipient addresses are not conserved). While arguably wasteful, the implication is that while all these recipient copies are appended to the ``mbox``, the bridge should wait until all have been added before processing. Currently the bridge attempts this by examining the ``mbox`` file size when called, and waiting a small delta time interval and checking if the size has changed again. It will wait until the size is stable before continuing. The TL;DR is this could result in a processing delay.
 
 == Introduction
 
@@ -118,7 +130,7 @@ This ``mbox`` file is then monitored for any changes, and on a change (assumed t
 
 While all the building blocks to effect the solution exist, the one missing piece is the ``mbox`` to ``m365`` block, which is provided for by this rather simple python script.
 
-== Setup
+== Setup your helper mail server, ``postfix``
 
 First, install ``postfix``
 
@@ -167,5 +179,16 @@ sudo systemctl restart postfix.service
 
 Simply configure your email client to use the machine running ``postfix`` as your email server. All emails will be appended to the ``transport`` user's ``mbox`` file.
 
+== Fire up ``mbox2m365``
 
+The final piece of the puzzle:
+
+```bash
+cd /var/mail
+find . | entr mbox2m365 --mbox rudolph --b64_encode         \
+                        --sendFromFile --cleanUp            \
+                        --waitForStragglers 5
+```
+
+_-30-_
 
