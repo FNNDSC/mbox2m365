@@ -14,6 +14,13 @@ Even if you're impatient, it's a good idea to read this document. However, assum
 pip install mbox2m365
 ```
 
+note at time of writing the PyPI install might not be available. In that case, simply clone this repo and do a
+
+```bash
+# From the repo root dir
+pip install -U .
+```
+
 and fire it off by setting up the monitor on the ``mbox`` file (here we assume the mbox belongs to ``rudolph``)
 
 ```bash
