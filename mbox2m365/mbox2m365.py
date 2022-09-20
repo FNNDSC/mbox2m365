@@ -604,12 +604,13 @@ Content-Transfer-Encoding: {content_encoding}
         with self.keyParsedFile.open("w", encoding = "UTF-8") as f:
             json.dump({"keysParsed":   self.l_keysParsed}, f)
 
-    def mbox_pauseUntilSizeStable(self):
+    def mbox_pauseUntilSizeStable(self) -> dict:
         """A simple check that examines the size of the mbox file
         in a tight loop and waits until the size is unchanged over
         two successive loops before continuing.
         """
 
+        d_env           : dict  = {}
         b_sizeStable    : bool  = False
         mboxSizeOld     : Path  = Path(self.mboxPath).stat().st_size
         mboxSizeNew     : Path  = Path(self.mboxPath).stat().st_size
@@ -622,9 +623,11 @@ Content-Transfer-Encoding: {content_encoding}
             if mboxSizeNew == mboxSizeOld:
                 b_sizeStable    = True
                 self.log('mbox size stable, continuing with processing...')
+                d_env           = self.env_check()
             else:
                 mboxSizeOld     = mboxSizeNew
                 self.log('mbox size unstable, waiting...')
+        return d_env
 
     def run(self, *args, **kwargs) -> dict:
 
@@ -658,7 +661,7 @@ Content-Transfer-Encoding: {content_encoding}
                                 )
                             )
                         )
-            self.state_save()
+                self.state_save()
 
         d_ret           : dict = {
             'env'       : d_env,
