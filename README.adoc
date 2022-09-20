@@ -29,7 +29,7 @@ find . | entr mbox2m365 --mbox rudolph --b64_encode         \
 
 Wait! **Danger, Will Robinson**! Doesn't this violate security policies? I was told my Institution does _not_ allow clients like thunderbird to connect to the Outlook server to send emails!
 
-Well, the devil is in the details as the saying goes. This solution does _not_ violate policy since the "unauthenticated" email client is _not_ ever connecting/authenticating to the Outlook server. Rather, the "unauthenticated" email client sends messages to a specially configured server that "saves" the emails to a file. Then, a separate program teases out the new arrivals and uses the *authenticated* ``m365`` program to actually talk to and leverage Outlook to send the email. This _separate program_ that bridges the mail file to ``m365`` is non other than this python module.
+Well, the devil is in the details as the saying goes. This solution does _not_ violate policy since the "unauthenticated" email client is _not_ ever connecting/authenticating to the Outlook server. Rather, the "unauthenticated" email client sends messages to a specially configured server that "saves" the emails to a file. Then, a separate program teases out the new arrivals and uses the *authenticated* ``m365`` program to actually talk to and leverage Outlook to send the email. This _separate program_ that bridges the mail file to ``m365`` is none other than this python module.
 
 So to be pendantic: all credentialing and authentication is handled by ``m365`` and _not_ this tool. The end user is still required to login/authenticate using ``m365``. If this has not happened, then ``mbox2m365`` will not work.
 
@@ -37,13 +37,19 @@ Again, this repo contains **no** authentication tokens/passwords/etc.
 
 == Limitations
 
-Let's get these out of the way first. This is _not_ a full solution for linking a third party email client to Outlook. It gets _close_, IMHO. Fundmanentally, this solution is limited first and foremost by the capabilities of the CLI ``m365 outlook mail send`` functionality. At time of writing this does not fully support _bcc_ but most limiting, it **does not support attachments**. Should ``m365`` be updated to support https://github.com/pnp/cli-microsoft365/issues/3422[attachments], then this bridge will be updated accordingly.
+Let's get these out of the way first. This is _not_ a full solution for linking a third party email client to Outlook. It gets _close_, IMHO. The limitations are:
+
+* This is not a multi-user solution. All email transmitted to the intermediate helper server is added to a single user ``mbox`` which when processed by this script means *all* email in that ``mbox`` will appear to have been transmitted by that user. While in theory it should be possible to support multiple users, either by having a separate helper server per user or by having multiple local users on the mail server and separate ``mbox`` files, this is clearly not scalable. It is decent though for the single user case.
+
+* Fundmanentally, this solution is limited first and foremost by the capabilities of the CLI ``m365 outlook mail send`` functionality. At time of writing this **does not support attachments**. Should ``m365`` be updated to support https://github.com/pnp/cli-microsoft365/issues/3422[attachments], then this bridge will be updated accordingly.
+
+* Again, since the ``m365`` send capability only supports a ``To:`` field, it is not possible to support `_bcc_` transmission. All recipients whether bcc or not will see the total recipient list.
 
 On the attachment front, this bridge does attempt however to create mostly conformant MIME emails with attachments encoded in base64. Since it is not possible to manipulate the outgoing header, attachments appear directly in the body of the email. In theory, it should be possible for a recipient to base64 unencode the in-line attachment, but this is probably a bridge way too far for most people. Still, it _is_ possible.
 
 Other limitations stem from the fact the bridge needs to process the ``mbox`` file _de novo_ each time mail is received by the helper server. This means that time to process will increase linearly with ``mbox`` size. The real world implications of this are still being explored.
 
-Finally, the bridge does make a best effort attempt to _wait_ until the ``mbox`` has stabilized before analyzing it. When sending emails to multiple recipients, _each_ recipient gets a single complete copy in the ``mbox`` with a single address (the multiple recipient addresses are not conserved). While arguably wasteful, the implication is that while all these recipient copies are appended to the ``mbox``, the bridge should wait until all have been added before processing. Currently the bridge attempts this by examining the ``mbox`` file size when called, and waiting a small delta time interval and checking if the size has changed again. It will wait until the size is stable before continuing. The TL;DR is this could result in a processing delay.
+Finally, the bridge does make a best effort attempt to _wait_ until the ``mbox`` has stabilized before analyzing it. When sending emails to multiple recipients, _each_ recipient gets a single complete copy in the ``mbox`` with a single address (the multiple recipient addresses are not conserved in the ``mbox`` but _are_ processed by this bridge). While arguably wasteful, the implication is that while all these recipient copies are appended to the ``mbox``, the bridge should wait until all have been added before processing. Currently the bridge attempts this by examining the ``mbox`` file size when called, and waiting a small delta time interval and checking if the size has changed again. It will wait until the size is stable before continuing. The TL;DR is this could result in a processing delay.
 
 == Introduction
 
