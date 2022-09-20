@@ -28,6 +28,9 @@ import      shutil
 import      time
 import      base64
 import      re
+import      hashlib
+
+from        collections         import defaultdict
 
 class Mbox2m365(object):
     """
@@ -75,10 +78,9 @@ class Mbox2m365(object):
         self.version            : str   = self.args
         self.tic_start          : float =  0.0
         self.verbosityLevel     : int   = -1
-        self.d_m365             : dict  = {}
         self.configPath         : Path  = '/'
         self.keyParsedFile      : Path  = 'someFile.json'
-        self.transmissionCmd    : Path  = 'someFile.rec'
+        self.transmissionCmd    : Path  = 'someFile.cmd'
         self.emailFile          : Path  = 'someFile.txt'
         self.l_keysParsed       : list  = []
         self.l_keysInMbox       : list  = []
@@ -88,7 +90,10 @@ class Mbox2m365(object):
         self.dp                 = None
         self.log                = None
         self.mbox               = None
-        self.o_msg              = None
+        self.mboxPath           : Path  = 'mbox'
+        self.lo_msg             : list  = [] # list of objects of messages
+        self.d_m365             : dict  = {}
+        self.ld_m365            : list  = []
 
     def __init__(self, *args, **kwargs):
         """
@@ -108,7 +113,8 @@ class Mbox2m365(object):
             'bodyContents':     '',
             'bodyContentType':  'Text',     # Text,HTML
             'saveToSentItems':  'false',    # false,true
-            'output':           'json'      # json,text,csv
+            'output':           'json',     # json,text,csv
+            'bodyHash':         ''
         }
 
         self.dp             = pfmisc.debug(
@@ -118,7 +124,6 @@ class Mbox2m365(object):
         self.log            = self.dp.qprint
         self.configPath     = Path(user_config_dir(self.__name__))
         self.keyParsedFile  = self.configPath / Path('keysParsed.json')
-        self.transmissionCmd= self.configPath / Path('m365.cmd')
         self.mboxPath       = Path(self.args['inputDir']) / Path(self.args['mbox'])
 
     def env_check(self, *args, **kwargs) -> dict:
@@ -175,9 +180,9 @@ class Mbox2m365(object):
             'str_error':    str_error
         }
 
-    def message_listToProcess(self):
+    def message_listToProcess(self) -> list:
         """
-        Determine which new message in the mbox to process. Usually this is
+        Determine which new message(s) in the mbox to process. Usually this is
         simply the difference between the existing keys in the mbox and the
         current keys.
 
@@ -192,45 +197,60 @@ class Mbox2m365(object):
                 error.fatal(self, 'parseMessageIndices', drawBox = True)
         else:
             self.l_keysToParse  = list(set(self.l_keysInMbox) - set(self.l_keysParsed))
-        self.log('Message keys to transmit: %s' % self.l_keysToParse)
+        self.log('Message keys to process: %s' % self.l_keysToParse)
         return self.l_keysToParse
 
-    def message_extract(self, index):
+    def messageList_extract(self, l_index : list) -> dict:
         """
-        Simply extract the message (with very rudimentary error checking) from mbox
+        Simply extract the newly arrived mbox messages into an internal
+        list buffer (with very rudimentary error checking)
         """
-        b_status: bool  = True
-        try:
-            self.o_msg  = self.mbox[self.mbox.keys()[index]]
-        except:
-            b_status    = False
-        self.log("Extracted message at index '%s'" % index)
+        lb_status   : bool  = []
+        l_extracted : list  = []
+        for index in l_index:
+            try:
+                self.lo_msg.append(self.mbox[self.mbox.keys()[index]])
+                self.log("Extracted message at index '%s'" % index)
+                lb_status.append(True)
+                l_extracted.append(index)
+            except:
+                lb_status.append(False)
 
         return {
-            'status':   b_status,
-            'index':    index
+            'status'        :   any(lb_status),
+            'l_index'       :   l_index,
+            'l_extracted'   :   l_extracted
         }
 
-    def multipart_saveToFile(self, message):
+    def urlify(self, s : str) -> str:
+        """Simple method that removes all whitespace and non-word chars from
+        a string -- typically to create a "clean" version suitable for simple
+        processing
+
+        Args:
+            s (str): the string to process
+
+        Returns:
+            str: the clean version of the input string
         """
-        Save the message to a file. In such a case m365 will be instructed
-        to transmit the email from this file.
+        # Remove all non-word characters (everything except numbers and letters)
+        s = re.sub(r"[^\w\s]", '', s)
+        # Replace all runs of whitespace with a single dash
+        s = re.sub(r"\s+", '-', s)
+        return s
+
+    def body_saveToFile(self, m365message):
         """
-        def urlify(s):
-            # Remove all non-word characters (everything except numbers and letters)
-            s = re.sub(r"[^\w\s]", '', s)
+        Save the message body to a file, allowing the transmission of messages
+        that will otherwise exceed CLI string length.
 
-            # Replace all runs of whitespace with a single dash
-            s = re.sub(r"\s+", '-', s)
-            return s
+        In such a case m365 will be instructed to transmit the email from this file.
+        """
 
-
-        str_subjClean       : str   = urlify(self.d_m365['subject'])
-        self.emailFile              = self.configPath / Path(str_subjClean + ".txt")
         with open(str(self.emailFile), "w") as f:
-            f.write(message)
+            f.write(m365message['bodyContents'])
 
-    def multipart_appendSimply(self, message):
+    def multipart_appendSimply(self, message) -> str:
         """
         Simple (naive) multipart handler. If sending a multipart message
         this attempts to base64 encode any attachments and append them
@@ -261,13 +281,13 @@ Content-Transfer-Encoding: {content_encoding}
             content_type        = part.get_content_type()
             content_disposition = str(part.get("Content-Disposition"))
             content_encoding    = str(part.get("Content-Transfer-Encoding"))
-            self.log("Processing multipart message...")
-            self.log("Content-Type: " + f"{content_type}")
-            self.log("Content-Disposition: " + f"{content_disposition}")
-            self.log("Content-Transfer-Encoding: " + f"{content_encoding}")
+            self.log("\t\tProcessing multipart message...")
+            self.log("\t\tContent-Type: " + f"{content_type}")
+            self.log("\t\tContent-Disposition: " + f"{content_disposition}")
+            self.log("\t\tContent-Transfer-Encoding: " + f"{content_encoding}")
             try:
                 bodyPart = part.get_payload(decode = True).decode()
-                self.log('bodyPart attached after decode()', comms = 'status')
+                self.log('\t\tbodyPart attached after decode()', comms = 'status')
             except:
                 if self.args['b64_encode']:
                     bodyPart                = part.get_payload(decode = True)
@@ -277,13 +297,13 @@ Content-Transfer-Encoding: {content_encoding}
                             filename        = f"; name={part.get_filename()}"
                         except:
                             filename        = ""
-                        self.log('Encoding into base64 "ascii" for retransmission')
-                        self.log('Original (<type>, <size>) = (%s, %s)' % \
+                        self.log('\t\tEncoding into base64 "ascii" for retransmission')
+                        self.log('\t\t\tOriginal (<type>, <size>) = (%s, %s)' % \
                                     (type(bodyPart), len(bodyPart)))
 
                         bytes_b64   = base64.b64encode(bodyPart)
                         bodyPart    = bytes_b64.decode("ascii")
-                        self.log('Encoded (<type>, <size>) = (%s, %s)' % \
+                        self.log('\t\t\tEncoded (<type>, <size>) = (%s, %s)' % \
                                     (type(bodyPart), len(bodyPart)))
                         length      = 72
                         bodyPartFixedWidth  = ""
@@ -295,76 +315,285 @@ Content-Transfer-Encoding: {content_encoding}
                     else:
                         bodyPart    = ""
                 else:
-                    self.log('bodyPart attachment skipped!', comms = 'status')
+                    self.log('\t\tbodyPart attachment skipped!', comms = 'status')
                     bodyPart    = ""
             str_body += str(bodyPart)
         return bodyFirst + '\n' + str_body
 
-    def message_parse(self, d_extract):
-        """
-        Populate the internal self.d_m365 payload
+    def messageList_componentsSeparate(self, d_extract : dict) -> dict:
+        """Separate the extracted message list into constituent 'subject',
+        'body' and 'to' list components. Essentially creating lists of
+
+            [<to1>, ... <toN>]
+            [<subj1>, ... <subjN>]
+            [<date1>, ... <dateN>]
+            [<bodyContents1>, ... <bodyContentsN>]
+            [<hashContents1>, ... <hashContentsN>]
+
+        Args:
+            d_extract (Dict): a dictionary containing the list of extracted
+                              indices. Used mainly to determine the status
+                              of the extract call.
+
+        Returns:
+            dict: a structure containing parsed 'subject', 'body', and 'to'
+                as explicit lists.
         """
         b_status        : bool  = False
         message                 = None
+        lstr_subject    : list  = []
+        lstr_to         : list  = []
+        lstr_date       : list  = []
+        lstr_msgBody    : list  = []
+        lhash_msgBody   : list  = []
+        count           : int   = 0
+
         if d_extract['status']:
-            self.d_m365['subject']      = self.o_msg['Subject']
-            self.d_m365['to']           = self.o_msg['Delivered-To']
-            if self.o_msg.is_multipart():
-                message                 = self.multipart_appendSimply(self.o_msg)
-            else:
-                message                 = self.o_msg.get_payload()
-            if self.args['sendFromFile']:
-                self.multipart_saveToFile(message)
-                self.log('Email saved to %s' % self.emailFile)
-            self.d_m365['bodyContents'] = message
-            b_status    = True
-            self.log(
-                "Parsed message to '%s' re '%s'" % (
-                                self.d_m365['to'],
-                                self.d_m365['subject']
-                        )
-                )
+            if self.lo_msg: b_status = True
+            for message in self.lo_msg:
+                lstr_subject.append(message['Subject'])
+                lstr_to.append(message['Delivered-To'])
+                lstr_date.append(message['Date'])
+                if message.is_multipart():
+                    lstr_msgBody.append(self.multipart_appendSimply(message))
+                else:
+                    lstr_msgBody.append(message.get_payload())
+                lhash_msgBody.append(hashlib.md5(lstr_msgBody[-1].encode('utf-8')).hexdigest())
+                self.log(
+                    "Parsed message [%03d-%s] on '%31s' to '%s' re '%s'" % (
+                                    self.l_keysToParse[count],
+                                    lhash_msgBody[-1],
+                                    lstr_date[-1],
+                                    lstr_to[-1],
+                                    lstr_subject[-1]
+                            )
+                    )
+                count += 1
         return {
             'status'    : b_status,
-            'to'        : self.d_m365['to'],
-            'subject'   : self.d_m365['subject'],
-            'extract'   : d_extract
+            'd_fields'  : {
+                'l_date'    : lstr_date,
+                'l_to'      : lstr_to,
+                'l_subject' : lstr_subject,
+                'l_body'    : lstr_msgBody,
+                'l_hash'    : lhash_msgBody
+            },
+            'prior'     : d_extract,
         }
 
-    def message_transmit(self, d_parse):
+    def messageList_tallyOccurences(self, d_separate : dict) -> dict:
+        """Tally the occurrences of elements.
+
+        Args:
+            d_separate (dict): The various upstream separate lists
+
+        Returns:
+            dict: A dictionary of occurences of each field. This is
+                  used downstream to collapse messages with identical
+                  content into one transmission from Outlook.
         """
-        Transmit the actual message -- either directly on the CLI or
-        from a created file...
+        b_status : bool = True
+
+        def tally_occurences(seq):
+            tally = defaultdict(list)
+            for i,item in enumerate(seq):
+                tally[item].append(i)
+            return ({key: locs} for key,locs in tally.items()
+                                    if len(locs)>=1)
+
+        d_occurences    : dict = {
+            'l_to'      : [],
+            'l_date'    : [],
+            'l_subject' : [],
+            'l_body'    : [],
+            'l_hash'    : []
+        }
+        if d_separate['status']:
+            for key in d_separate['d_fields'].keys():
+                for occur in (tally_occurences(d_separate['d_fields'][key])):
+                    d_occurences[key].append(occur)
+        return {
+            'status'        :   b_status,
+            'd_occurences'  :   d_occurences,
+            'prior'         :   d_separate
+        }
+
+    def messageList_consolidateOccurences(self, d_tally : dict) -> dict:
+        """Collapse messages that are 'cc' or 'bcc' into one message
+        within the internal list of message dictionaries.
+
+        Args:
+            d_occurences (dict): the tally of duplicate field occurences
+
+        Returns:
+            dict: dictionary of consolidated messages to transmit
         """
-        b_status        : bool  = False
-        str_m365        : str   = ""
-        d_m365          : dict  = {}
-        # pudb.set_trace()
-        if d_parse['status']:
-            shell       = jobber.jobber({'verbosity': 1, 'noJobLogging': True})
+
+        def get(atype : str, what : str, l : str, i : int):
+            """A quick nested helper to extract the key or value from
+               a list 'l' at index 'i'
+
+            Args:
+                atype (str): Either a 'set' or a 'list' to get
+                what (str): The 'key' or 'value' in the dictionary to extract
+                l (str): The name of the d_occurences list to process
+                i (int): The index within the list
+
+            Returns:
+                str: The key or value
+            """
+            target  = None
+            if what == 'key':
+                target = list(d_tally['d_occurences'][l][i].keys())[0]
+            else:
+                target = list(d_tally['d_occurences'][l][i].values())[0]
+            if atype == 'set':
+                return set(target)
+            else:
+                return target
+
+        def lists_haveEqualValues(l_lists: list, idx: int) -> bool:
+            """Check if variable number of lists are equal.
+
+            Args:
+                l_lists (list): The lists within the tally/occurences to process
+                idx (int): The list index within the occurence dictionary
+
+            Returns:
+                bool: if the lists are equal in value, return True; else False
+            """
+            b_equal     = True
+            l_set       = []
+            for el in l_lists:
+                l_set.append(get('set', 'value', el, idx))
+            n = set.intersection(*l_set)
+            for el in l_lists:
+                if n != get('set', 'value', el, idx):
+                    b_equal = False
+            return b_equal
+
+        def recipients_get(l_target : list) -> str:
+            """For each o_msg index in l_target, create a compound
+            comma separated list of recipients
+
+            Args:
+                l_target (list): The list of indices in the original mbox
+                                 message structure to consult for "to"
+                                 recipients.
+
+            Returns:
+                str: The (comma separated) string (list) of recipients
+            """
+            str_ret         = ""
+            l_to : list     = []
+            for msgi in l_target:
+                l_to.append(self.lo_msg[msgi]['Delivered-To'])
+                self.l_keysParsed.append(self.l_keysToParse[msgi])
+            str_ret         = ','.join(l_to)
+            return str_ret
+
+        b_status    : bool  = False
+        msgCount    : int   = 0
+
+        if d_tally['status']:
+            msgCount                = len(d_tally['d_occurences']['l_date'])
+            if msgCount: b_status   = True
+            for idx in range(0, msgCount):
+                # This test was originally predicated on the idea that tallying
+                # occurences across dates and hashes would always match. Sometimes
+                # with attachments, however, it seems the hashes do not. Hence for
+                # now this "dummy" fall through based solely on the date stamp
+                # only.
+                if lists_haveEqualValues(['l_date', 'l_date'], idx):
+                    self.ld_m365.append(self.d_m365.copy())
+                    self.ld_m365[idx]['subject']      = self.lo_msg[idx]['Subject']
+                    self.ld_m365[idx]['to']           = recipients_get(get('list', 'value', 'l_date', idx))
+                    self.ld_m365[idx]['bodyContents'] = get('list', 'key', 'l_body', idx)
+                    self.ld_m365[idx]['bodyHash']     = get('list', 'key', 'l_hash', idx)
+
+        return {
+            'status'        :   b_status,
+            'messageCount'  :   msgCount,
+            'ld_transmit'   :   self.ld_m365,
+            'mboxIndices'   :   self.l_keysParsed,
+            'prior'         :   d_tally
+        }
+
+    def messageList_transmit(self, d_consolidated : dict) -> dict:
+        """Transmit the consolidated message list
+
+        Args:
+            d_consolidated (dict): a dictionary containing the list of
+                                   messages to transmit
+
+        Returns:
+            dict: a dictionary of the transmission list record
+        """
+
+        def cleanUp():
+            if self.args['cleanUp']:
+                self.log("\tRemoving tx file '%s'" % self.transmissionCmd)
+                self.transmissionCmd.unlink()
+                if self.args['sendFromFile']:
+                    self.log("\tRemoving body file '%s'" % self.emailFile)
+                    self.emailFile.unlink()
+
+        def bodyToFile_check():
+            nonlocal m365message
             if self.args['sendFromFile']:
-                self.d_m365['bodyContents'] = f'@{self.emailFile}'
+                self.emailFile  = self.configPath / Path(baseFileName + "_body.txt")
+                self.body_saveToFile(m365message)
+                m365message['bodyContents']     = f'@{self.emailFile}'
+
+        def txscript_content():
+            nonlocal m365message
+            str_m365    : str   = ""
             str_m365    = """#!/bin/bash
 
             m365 outlook mail send -s '%s' -t %s --bodyContents '%s'
             """ % \
                     (
-                      self.d_m365['subject'],
-                      self.d_m365['to'],
-                      self.d_m365['bodyContents']
+                      m365message['subject'],
+                      m365message['to'],
+                      m365message['bodyContents']
                     )
+            return str_m365
+
+        def txscript_save(str_content):
+            self.transmissionCmd = self.configPath / Path(baseFileName + "_tx.cmd")
             with open(self.transmissionCmd, "w") as f:
-                f.write(f'%s' % str_m365)
+                f.write(f'%s' % str_content)
             self.transmissionCmd.chmod(0o755)
-            d_m365      = shell.job_run(str(self.transmissionCmd))
-            self.log(
-                "Transmitted message, return code '%s'" % d_m365['returncode']
-            )
-            b_status    = True
+
+        b_status        : bool  = False
+        str_m365        : str   = ""
+        d_m365          : dict  = {}
+        ld_m365         : list  = []
+        baseFileName    : str   = ""
+
+        if d_consolidated['status']:
+            shell       = jobber.jobber({'verbosity': 1, 'noJobLogging': True})
+            for m365message in d_consolidated['ld_transmit']:
+                b_status        = True
+                baseFileName    = self.urlify(m365message['subject'])
+                bodyToFile_check()
+                txscript_save(txscript_content())
+                d_m365  = shell.job_run(str(self.transmissionCmd))
+                self.log(
+                    "Transmitted message (%s), return code '%s', recipients '%s'" %\
+                         (m365message['bodyHash'],
+                          d_m365['returncode'],
+                          m365message['to'])
+                )
+                b_status    = True
+                ld_m365.append(d_m365.copy())
+                m365message['bodyContents']
+                cleanUp()
+
         return {
             'status'    : b_status,
-            'm365'      : d_m365,
-            'parse'     : d_parse
+            'ld_m365'   : ld_m365,
+            'prior'     : d_consolidated
         }
 
     def state_save(self):
@@ -375,6 +604,28 @@ Content-Transfer-Encoding: {content_encoding}
         with self.keyParsedFile.open("w", encoding = "UTF-8") as f:
             json.dump({"keysParsed":   self.l_keysParsed}, f)
 
+    def mbox_pauseUntilSizeStable(self):
+        """A simple check that examines the size of the mbox file
+        in a tight loop and waits until the size is unchanged over
+        two successive loops before continuing.
+        """
+
+        b_sizeStable    : bool  = False
+        mboxSizeOld     : Path  = Path(self.mboxPath).stat().st_size
+        mboxSizeNew     : Path  = Path(self.mboxPath).stat().st_size
+        while not b_sizeStable:
+            self.log('mbox file size currently: %d' % mboxSizeOld, comms = 'status')
+            self.log('waiting for %s seconds for stragglers...' % \
+                        self.args['waitForStragglers'])
+            time.sleep(int(self.args['waitForStragglers']))
+            mboxSizeNew = Path(self.mboxPath).stat().st_size
+            if mboxSizeNew == mboxSizeOld:
+                b_sizeStable    = True
+                self.log('mbox size stable, continuing with processing...')
+            else:
+                mboxSizeOld     = mboxSizeNew
+                self.log('mbox size unstable, waiting...')
+
     def run(self, *args, **kwargs) -> dict:
 
         b_status            : bool  = False
@@ -382,9 +633,9 @@ Content-Transfer-Encoding: {content_encoding}
         d_env               : dict  = {}
         ld_send             : list  = []
         d_filter            : dict  = {}
-        b_JSONprint         : bool  = True
         b_catchStragglers   : bool  = True
         d_env               : dict  = self.env_check()
+        d_tx                : dict  = {}
 
         if d_env['status']:
             for k, v in kwargs.items():
@@ -392,36 +643,27 @@ Content-Transfer-Encoding: {content_encoding}
                 if k == 'JSONprint':    b_JSONprint     = bool(v)
 
             if b_timerStart:    other.tic()
-            while b_catchStragglers:
-                for message in self.message_listToProcess():
-                    ld_send.append(
-                        self.message_transmit(
-                            self.message_parse(
-                                self.message_extract(message)
+
+            self.mbox_pauseUntilSizeStable()
+
+            while self.message_listToProcess():
+                d_tx =  self.messageList_transmit(
+                            self.messageList_consolidateOccurences(
+                                self.messageList_tallyOccurences(
+                                    self.messageList_componentsSeparate(
+                                        self.messageList_extract(
+                                            self.message_listToProcess()
+                                        )
+                                    )
+                                )
                             )
                         )
-                    )
-                    self.l_keysTransmitted.append(message)
-                self.l_keysParsed.extend(self.l_keysTransmitted)
-                # Now check the environment again to grab any "stragglers"
-                # i.e. emails that might have appeared *while* we checked the
-                # first time
-                self.state_save()
-                self.log(
-                    "Checking for stragglers that might have snuck in while we were processing...",
-                    comms = 'tx'
-                )
-                d_env   = self.env_check()
-                if not len(self.message_listToProcess()):
-                    b_catchStragglers = False
-                    self.log(
-                        "No stragglers found... going back to sleep!",
-                        comms = 'rx'
-                    )
+            self.state_save()
+
         d_ret           : dict = {
             'env'       : d_env,
             'runTime'   : other.toc(),
-            'send'      : ld_send
+            'send'      : d_tx
         }
 
         return d_ret
