@@ -7,7 +7,8 @@
 #                        dev@babyMRI.org
 #
 
-import sys, os
+import  sys, os
+import  pudb
 
 try:
     from    .               import mbox2m365
@@ -17,23 +18,24 @@ except:
     from __init__           import __pkg, __version__
 from    argparse            import RawTextHelpFormatter
 from    argparse            import ArgumentParser
-import  pudb
 
 import  pfmisc
 from    pfmisc._colors      import Colors
 from    pfmisc              import other
 
+import  json
+
 str_desc = Colors.CYAN + """
 
 
-                        _               ___            ____    __ _____ 
+                        _               ___            ____    __ _____
                        | |             |__ \          |___ \  / /| ____|
-              _ __ ___ | |__   _____  __  ) |_ __ ___   __) |/ /_| |__  
-             | '_ ` _ \| '_ \ / _ \ \/ / / /| '_ ` _ \ |__ <| '_ \___ \ 
+              _ __ ___ | |__   _____  __  ) |_ __ ___   __) |/ /_| |__
+             | '_ ` _ \| '_ \ / _ \ \/ / / /| '_ ` _ \ |__ <| '_ \___ \
              | | | | | | |_) | (_) >  < / /_| | | | | |___) | (_) |__) |
-             |_| |_| |_|_.__/ \___/_/\_\____|_| |_| |_|____/ \___/____/ 
-                                                            
-                                                            
+             |_| |_| |_|_.__/ \___/_/\_\____|_| |_| |_|____/ \___/____/
+
+
 
                         (unix) m(ail)box 2 (MS Outlook)365
 
@@ -66,7 +68,11 @@ package_CLIcore = """
 
 package_CLIself = '''
         --mbox <mbox>                                                           \\
-        [--parseMessageIndices <M,N,...>]                                       \\'''
+        [--parseMessageIndices <M,N,...>]                                       \\
+        [--b64_encode]                                                          \\
+        [--sendFromFile]                                                        \\
+        [--waitForStragglers <waitSecondsFirst>]                                \\
+        [--cleanUp]                                                             \\'''
 
 package_argSynopsisSelf = """
         --mbox <mbox>
@@ -76,6 +82,29 @@ package_argSynopsisSelf = """
         Instead of processing "new" messages in the mbox, explicitly
         filter and send the message at the specified key indices <M>, <N>...
         This is comma-separated string.
+
+        [--b64_encode]
+        If specified, encode any attachments with base64 encoding.
+
+        [--sendFromFile]
+        If specified, write body text to a file, and transmit the file. If not
+        specified, the body text is added inline to the transmit command. For
+        long messages, inline transmission will result in CLI overflow, but
+        is fractionally faster for short messages.
+
+        [--waitForStragglers <loopDelay>]
+        This is a "hack" to delay processing a tad. For messages with many
+        recipients, data might still be in the process of being appended to the
+        mbox when this bridge opens. In that event, "late comers" might be
+        missed.
+
+        This is a naive switch that examines the --mbox filesize in a
+        <loopDelay> waits until the filesize is unchanging between two
+        successive loops. In this manner, the bridge attempts to wait until
+        the mbox file size has stabilized.
+
+        [--cleanUp]
+        If specified, will clean up any files generated during operation.
 """
 
 package_argSynopsisCore = """
@@ -145,7 +174,9 @@ def synopsis(ab_shortOnly = False):
     EXAMPLES
 
         cd /var/mail
-        find rudolph | entr mbox2m365 --inputFile rudolph
+        find rudolph | entr mbox2m365 --mbox rudolph                            \\
+                                      --b64_encode --sendFromFile               \\
+                                      --cleanUp --waitForStragglers 10
 
     '''
 
@@ -170,11 +201,20 @@ parserCore.add_argument("--b64_encode",
                     dest    = 'b64_encode',
                     action  = 'store_true',
                     default = False)
+parserCore.add_argument("--cleanUp",
+                    help    = "clean up all operational files generated during execution",
+                    dest    = 'cleanUp',
+                    action  = 'store_true',
+                    default = False)
 parserCore.add_argument("--sendFromFile",
                     help    = "save the email to a file first, and then transmit this file",
                     dest    = 'sendFromFile',
                     action  = 'store_true',
                     default = False)
+parserSelf.add_argument("--waitForStragglers",
+                    help    = "wait buffer before starting processing",
+                    dest    = 'waitForStragglers',
+                    default = '1')
 parserSelf.add_argument("--parseMessageIndices",
                     help    = "parse messages at given indices",
                     dest    = 'parseMessageIndices',
@@ -259,6 +299,8 @@ def main(argv=None):
                 "Elapsed time = %f seconds" %
                 d_mbox2m365['runTime']
         )
+
+    mbox_2_m365.log("%s:%s all done and going to sleep!" % (__pkg.name, __version__), comms = 'rx')
 
     return 0
 
