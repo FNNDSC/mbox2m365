@@ -114,7 +114,8 @@ class Mbox2m365(object):
             'bodyContentType':  'Text',     # Text,HTML
             'saveToSentItems':  'false',    # false,true
             'output':           'json',     # json,text,csv
-            'bodyHash':         ''
+            'bodyHash':         '',
+            'attachments':      ()
         }
 
         self.dp             = pfmisc.debug(
@@ -250,6 +251,52 @@ class Mbox2m365(object):
         with open(str(self.emailFile), "w") as f:
             f.write(m365message['bodyContents'])
 
+    def multipart_separateAttachments(self, message: bytes) -> dict:
+        """Separate attachments in the <message> into discrete files
+
+        Args:
+            message (bytes): mbox message to process
+
+        Returns:
+            dict: names of all detached attachment files
+        """
+        d_ret   = {
+            'status'            : False,
+            'textBody'          : '',
+            'attachFilesList'   : []
+        }
+        str_body        : str   = ""
+        for part in message.walk():
+            content_type        = part.get_content_type()
+            content_disposition = str(part.get("Content-Disposition"))
+            content_encoding    = str(part.get("Content-Transfer-Encoding"))
+            self.log("\t\tProcessing multipart message...")
+            self.log("\t\tContent-Type: " + f"{content_type}")
+            self.log("\t\tContent-Disposition: " + f"{content_disposition}")
+            self.log("\t\tContent-Transfer-Encoding: " + f"{content_encoding}")
+            try:
+                # If this decodes, we are in string part of the message
+                bodyPart    = part.get_payload(decode = True).decode()
+                d_ret['status'] = True
+                self.log('\t\tbodyPart attached after decode()', comms = 'status')
+                str_body   += str(bodyPart)
+                d_ret['textBody']   = str_body
+            except:
+                # If this decodes, we are in a binary (attachment) part of
+                # the message -- decode, save, and record in list
+                bodyPart    = part.get_payload(decode = True)
+                try:
+                    # Determine the filename from the attachment
+                    str_filename:str = eval(content_disposition.split('filename=')[1])
+                    d_ret['attachFilesList'].append(str_filename)
+                    # and save to self.configPath dir:
+                    path_save:Path   = self.configPath / Path(str_filename)
+                    with open(str(path_save), "wb") as bf:
+                        bf.write(bodyPart)
+                except:
+                    pass
+        return d_ret
+
     def multipart_appendSimply(self, message) -> str:
         """
         Simple (naive) multipart handler. If sending a multipart message
@@ -339,14 +386,15 @@ Content-Transfer-Encoding: {content_encoding}
             dict: a structure containing parsed 'subject', 'body', and 'to'
                 as explicit lists.
         """
-        b_status        : bool  = False
-        message                 = None
-        lstr_subject    : list  = []
-        lstr_to         : list  = []
-        lstr_date       : list  = []
-        lstr_msgBody    : list  = []
-        lhash_msgBody   : list  = []
-        count           : int   = 0
+        b_status            : bool  = False
+        message                     = None
+        lstr_subject        : list  = []
+        lstr_to             : list  = []
+        lstr_date           : list  = []
+        lstr_msgBody        : list  = []
+        lhash_msgBody       : list  = []
+        lstr_attachments    : list  = []
+        count               : int   = 0
 
         if d_extract['status']:
             if self.lo_msg: b_status = True
@@ -355,7 +403,10 @@ Content-Transfer-Encoding: {content_encoding}
                 lstr_to.append(message['Delivered-To'])
                 lstr_date.append(message['Date'])
                 if message.is_multipart():
-                    lstr_msgBody.append(self.multipart_appendSimply(message))
+                    pudb.set_trace()
+                    d_parts:dict = self.multipart_separateAttachments(message)
+                    lstr_msgBody.append(d_parts['textBody'])
+                    lstr_attachments.append(tuple(d_parts['attachFilesList']))
                 else:
                     lstr_msgBody.append(message.get_payload())
                 lhash_msgBody.append(hashlib.md5(lstr_msgBody[-1].encode('utf-8')).hexdigest())
@@ -372,11 +423,12 @@ Content-Transfer-Encoding: {content_encoding}
         return {
             'status'    : b_status,
             'd_fields'  : {
-                'l_date'    : lstr_date,
-                'l_to'      : lstr_to,
-                'l_subject' : lstr_subject,
-                'l_body'    : lstr_msgBody,
-                'l_hash'    : lhash_msgBody
+                'l_date'        : lstr_date,
+                'l_to'          : lstr_to,
+                'l_subject'     : lstr_subject,
+                'l_body'        : lstr_msgBody,
+                'l_attachments' : lstr_attachments,
+                'l_hash'        : lhash_msgBody
             },
             'prior'     : d_extract,
         }
@@ -397,16 +449,21 @@ Content-Transfer-Encoding: {content_encoding}
         def tally_occurences(seq):
             tally = defaultdict(list)
             for i,item in enumerate(seq):
-                tally[item].append(i)
+                try:
+                    tally[item].append(i)
+                except:
+                    # We're trying to tally a possible attachment list so can skip
+                    pass
             return ({key: locs} for key,locs in tally.items()
                                     if len(locs)>=1)
 
         d_occurences    : dict = {
-            'l_to'      : [],
-            'l_date'    : [],
-            'l_subject' : [],
-            'l_body'    : [],
-            'l_hash'    : []
+            'l_to'          : [],
+            'l_date'        : [],
+            'l_subject'     : [],
+            'l_attachments' : [],
+            'l_body'        : [],
+            'l_hash'        : []
         }
         if d_separate['status']:
             for key in d_separate['d_fields'].keys():
@@ -510,6 +567,7 @@ Content-Transfer-Encoding: {content_encoding}
                     self.ld_m365[idx]['to']           = recipients_get(get('list', 'value', 'l_date', idx))
                     self.ld_m365[idx]['bodyContents'] = get('list', 'key', 'l_body', idx)
                     self.ld_m365[idx]['bodyHash']     = get('list', 'key', 'l_hash', idx)
+                    self.ld_m365[idx]['attachments']  = get('list', 'key', 'l_attachments', idx)
 
         return {
             'status'        :   b_status,
@@ -538,25 +596,27 @@ Content-Transfer-Encoding: {content_encoding}
                     self.log("\tRemoving body file '%s'" % self.emailFile)
                     self.emailFile.unlink()
 
-        def bodyToFile_check():
-            nonlocal m365message
+        def bodyToFile_check(m365message):
+            # nonlocal m365message
             if self.args['sendFromFile']:
                 self.emailFile  = self.configPath / Path(baseFileName + "_body.txt")
                 self.body_saveToFile(m365message)
                 m365message['bodyContents']     = f'@{self.emailFile}'
 
-        def txscript_content():
-            nonlocal m365message
+        def txscript_content(m365message):
+            # nonlocal m365message
             str_m365    : str   = ""
             str_m365    = """#!/bin/bash
 
-            m365 outlook mail send -s '%s' -t %s --bodyContents '%s'
-            """ % \
+            m365 outlook mail send -s '%s' -t %s --bodyContents '%s'""" % \
                     (
                       m365message['subject'],
                       m365message['to'],
                       m365message['bodyContents']
                     )
+            if len(m365message['attachments']):
+                for attachment in m365message['attachments']:
+                    str_m365 += ' --attachment "' + str(self.configPath / Path(attachment)) + '"'
             return str_m365
 
         def txscript_save(str_content):
@@ -576,8 +636,8 @@ Content-Transfer-Encoding: {content_encoding}
             for m365message in d_consolidated['ld_transmit']:
                 b_status        = True
                 baseFileName    = self.urlify(m365message['subject'])
-                bodyToFile_check()
-                txscript_save(txscript_content())
+                bodyToFile_check(m365message)
+                txscript_save(txscript_content(m365message))
                 d_m365  = shell.job_run(str(self.transmissionCmd))
                 self.log(
                     "Transmitted message (%s), return code '%s', recipients '%s'" %\
