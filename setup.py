@@ -6,7 +6,7 @@ if 10 * sys.version_info[0]  + sys.version_info[1] < 35:
 
 from setuptools import setup
 
-def readme():
+def readme() -> str:
     with open('README.md') as f:
         return f.read()
 

@@ -34,7 +34,7 @@ git push origin master
 git tag $VER
 git push origin --tags
 
-rstcheck README.rst
+#rstcheck README.rst
 python3 setup.py sdist
 twine upload dist/$(basename $(pwd))-${VER}.tar.gz
 
