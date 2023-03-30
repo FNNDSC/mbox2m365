@@ -13,5 +13,6 @@ def readme() -> str:
 if __name__ == "__main__":
     setup(
       long_description =   readme(),
-      long_description_content_type = "text/markdown"
+      long_description_content_type = "text/markdown",
+      include_package_data = True
     )
