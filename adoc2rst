@@ -1,0 +1,2 @@
+asciidoctor -b docbook5 README.adoc                                                                                                                                                                                                                   ─╯
+pandoc -f docbook -t gfm README.xml -o README.rst  
