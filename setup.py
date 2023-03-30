@@ -7,10 +7,11 @@ if 10 * sys.version_info[0]  + sys.version_info[1] < 35:
 from setuptools import setup
 
 def readme():
-    with open('README.rst') as f:
+    with open('README.md') as f:
         return f.read()
 
 if __name__ == "__main__":
     setup(
       long_description =   readme(),
+      long_description_content_type = "text/markdown"
     )
