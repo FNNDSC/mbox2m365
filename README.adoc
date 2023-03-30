@@ -46,13 +46,9 @@ Again, this repo contains **no** authentication tokens/passwords/etc.
 
 Let's get these out of the way first. This is _not_ a full solution for linking a third party email client to Outlook. It gets _close_, IMHO. The limitations are:
 
-* This is not a multi-user solution. All email transmitted to the intermediate helper server is added to a single user ``mbox`` which when processed by this script means *all* email in that ``mbox`` will appear to have been transmitted by that user. While in theory it should be possible to support multiple users, either by having a separate helper server per user or by having multiple local users on the mail server and separate ``mbox`` files, this is clearly not scalable. It is decent though for the single user case.
+* This is not a multi-user solution. All email transmitted to the intermediate helper server is added to a single user ``mbox`` which when processed by this script means *all* email in that ``mbox`` will appear to have been transmitted by that user. While in theory it should be possible to support multiple users, either by having a separate helper server per user or by having multiple local users on the mail server and separate ``mbox`` files, the current solution is clearly not scalable. It is decent though for the single user case.
 
-* Fundmanentally, this solution is limited first and foremost by the capabilities of the CLI ``m365 outlook mail send`` functionality. At time of writing this **does not support attachments**. Should ``m365`` be updated to support https://github.com/pnp/cli-microsoft365/issues/3422[attachments], then this bridge will be updated accordingly.
-
-* Again, since the ``m365`` send capability only supports a ``To:`` field, it is not possible to support `_bcc_` transmission. All recipients whether bcc or not will see the total recipient list.
-
-On the attachment front, this bridge does attempt however to create mostly conformant MIME emails with attachments encoded in base64. Since it is not possible to manipulate the outgoing header, attachments appear directly in the body of the email. In theory, it should be possible for a recipient to base64 unencode the in-line attachment, but this is probably a bridge way too far for most people. Still, it _is_ possible.
+* Fundmanentally, this solution is limited first and foremost by the capabilities of the CLI ``m365 outlook mail send`` functionality. Recent updates to ``m365`` have expanded functionality of this bridge -- most notably attachments are now supported. Still pending is full ``bcc`` support -- currently all ``bcc`` recipients are switched to ``cc``.
 
 Other limitations stem from the fact the bridge needs to process the ``mbox`` file _de novo_ each time mail is received by the helper server. This means that time to process will increase linearly with ``mbox`` size. The real world implications of this are still being explored.
 

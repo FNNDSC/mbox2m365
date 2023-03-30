@@ -82,6 +82,7 @@ class Mbox2m365(object):
         self.keyParsedFile      : Path  = 'someFile.json'
         self.transmissionCmd    : Path  = 'someFile.cmd'
         self.emailFile          : Path  = 'someFile.txt'
+        self.l_attachments      : list  = []
         self.l_keysParsed       : list  = []
         self.l_keysInMbox       : list  = []
         self.l_keysToParse      : list  = []
@@ -403,7 +404,6 @@ Content-Transfer-Encoding: {content_encoding}
                 lstr_to.append(message['Delivered-To'])
                 lstr_date.append(message['Date'])
                 if message.is_multipart():
-                    pudb.set_trace()
                     d_parts:dict = self.multipart_separateAttachments(message)
                     lstr_msgBody.append(d_parts['textBody'])
                     lstr_attachments.append(tuple(d_parts['attachFilesList']))
@@ -549,6 +549,25 @@ Content-Transfer-Encoding: {content_encoding}
             str_ret         = ','.join(l_to)
             return str_ret
 
+        def attachments_get(l_messageList: list) -> tuple:
+            """Resolve the attachments (if any) for a given message
+
+            Args:
+                l_messageList (list): a list of unique consolidated
+                message indices
+
+            Returns:
+                tuple: tuple of string attachment filenames (w/o leading dir)
+                       for this message
+            """
+            t_attachmentsForMessage:tuple   = ()
+            l_attachmentGroup:list          = d_tally['d_occurences']['l_attachments']
+            for group in l_attachmentGroup:
+                if len(l_messageList):
+                    if l_messageList[0] in list(group.values())[0]:
+                        t_attachmentsForMessage = list(group.keys())[0]
+            return t_attachmentsForMessage
+
         b_status    : bool  = False
         msgCount    : int   = 0
 
@@ -563,11 +582,11 @@ Content-Transfer-Encoding: {content_encoding}
                 # only.
                 if lists_haveEqualValues(['l_date', 'l_date'], idx):
                     self.ld_m365.append(self.d_m365.copy())
-                    self.ld_m365[idx]['subject']      = self.lo_msg[idx]['Subject']
+                    self.ld_m365[idx]['subject']      = get('list', 'key', 'l_subject', idx)
                     self.ld_m365[idx]['to']           = recipients_get(get('list', 'value', 'l_date', idx))
+                    self.ld_m365[idx]['attachments']  = attachments_get(get('list', 'value', 'l_date', idx))
                     self.ld_m365[idx]['bodyContents'] = get('list', 'key', 'l_body', idx)
                     self.ld_m365[idx]['bodyHash']     = get('list', 'key', 'l_hash', idx)
-                    self.ld_m365[idx]['attachments']  = get('list', 'key', 'l_attachments', idx)
 
         return {
             'status'        :   b_status,
@@ -588,23 +607,30 @@ Content-Transfer-Encoding: {content_encoding}
             dict: a dictionary of the transmission list record
         """
 
-        def cleanUp():
-            if self.args['cleanUp']:
-                self.log("\tRemoving tx file '%s'" % self.transmissionCmd)
-                self.transmissionCmd.unlink()
-                if self.args['sendFromFile']:
-                    self.log("\tRemoving body file '%s'" % self.emailFile)
-                    self.emailFile.unlink()
+        def cleanAttachments(m365message) -> None:
+            if not self.args['cleanUp']: return
+            for attachment in m365message['attachments']:
+                try:
+                    (self.configPath / Path(attachment)).unlink()
+                    self.log("\tRemoving attachment file '%s'" % attachment)
+                except:
+                    pass
 
-        def bodyToFile_check(m365message):
-            # nonlocal m365message
+        def cleanUp() -> None:
+            if not self.args['cleanUp']: return
+            self.log("\tRemoving tx file '%s'" % self.transmissionCmd)
+            self.transmissionCmd.unlink()
+            if self.args['sendFromFile']:
+                self.log("\tRemoving body file '%s'" % self.emailFile)
+                self.emailFile.unlink()
+
+        def bodyToFile_check(m365message) -> None:
             if self.args['sendFromFile']:
                 self.emailFile  = self.configPath / Path(baseFileName + "_body.txt")
                 self.body_saveToFile(m365message)
                 m365message['bodyContents']     = f'@{self.emailFile}'
 
-        def txscript_content(m365message):
-            # nonlocal m365message
+        def txscript_content(m365message) -> str:
             str_m365    : str   = ""
             str_m365    = """#!/bin/bash
 
@@ -619,20 +645,20 @@ Content-Transfer-Encoding: {content_encoding}
                     str_m365 += ' --attachment "' + str(self.configPath / Path(attachment)) + '"'
             return str_m365
 
-        def txscript_save(str_content):
+        def txscript_save(str_content) -> None:
             self.transmissionCmd = self.configPath / Path(baseFileName + "_tx.cmd")
             with open(self.transmissionCmd, "w") as f:
                 f.write(f'%s' % str_content)
             self.transmissionCmd.chmod(0o755)
 
         b_status        : bool  = False
-        str_m365        : str   = ""
         d_m365          : dict  = {}
         ld_m365         : list  = []
         baseFileName    : str   = ""
 
         if d_consolidated['status']:
             shell       = jobber.jobber({'verbosity': 1, 'noJobLogging': True})
+            # First send all the messages...
             for m365message in d_consolidated['ld_transmit']:
                 b_status        = True
                 baseFileName    = self.urlify(m365message['subject'])
@@ -647,8 +673,9 @@ Content-Transfer-Encoding: {content_encoding}
                 )
                 b_status    = True
                 ld_m365.append(d_m365.copy())
-                m365message['bodyContents']
                 cleanUp()
+            for m365message in d_consolidated['ld_transmit']:
+                cleanAttachments(m365message)
 
         return {
             'status'    : b_status,
