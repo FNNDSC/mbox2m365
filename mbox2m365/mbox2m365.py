@@ -121,7 +121,8 @@ class Mbox2m365(object):
 
         self.dp             = pfmisc.debug(
                                  verbosity   = int(self.args['verbosity']),
-                                 within      = self.__name__
+                                 within      = self.__name__,
+                                 methodcol   = 55
                              )
         self.log            = self.dp.qprint
         self.configPath     = Path(user_config_dir(self.__name__))
@@ -703,7 +704,7 @@ Content-Transfer-Encoding: {content_encoding}
         mboxSizeNew     : Path  = Path(self.mboxPath).stat().st_size
         while not b_sizeStable:
             self.log('mbox file size currently: %d' % mboxSizeOld, comms = 'status')
-            self.log('waiting for %s seconds for stragglers...' % \
+            self.log('waiting %s seconds for stragglers...' % \
                         self.args['waitForStragglers'])
             time.sleep(int(self.args['waitForStragglers']))
             mboxSizeNew = Path(self.mboxPath).stat().st_size
