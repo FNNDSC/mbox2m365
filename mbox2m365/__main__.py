@@ -25,7 +25,7 @@ from    pfmisc              import other
 
 import  json
 
-str_desc = Colors.CYAN + """
+str_desc = Colors.CYAN + r"""
 
 
                         _               ___            ____    __ _____
@@ -149,11 +149,11 @@ def synopsis(ab_shortOnly = False):
     shortSynopsis =  """
     NAME
 
-        mbox2m365                                                               \\
+        mbox2m365
 
     SYNOPSIS
 
-        mbox2m365 """ + package_CLIself + package_CLIcore + """
+        mbox2m365                                                               \\""" + package_CLIself + package_CLIcore + """
 
     BRIEF EXAMPLE
 
