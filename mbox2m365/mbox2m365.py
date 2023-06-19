@@ -32,6 +32,18 @@ import      hashlib
 
 from        collections         import defaultdict
 
+def field_get(message:dict, field:str) -> str:
+    ret:str     = ""
+    if 'Delivered-To' in field:
+        if message.get(field):
+            ret = str(message.get(field))
+        elif message.get('To'):
+            ret = str(message.get('To'))
+    else:
+            ret = str(message.get(field))
+    return ret
+
+
 class Mbox2m365(object):
     """
 
@@ -401,9 +413,12 @@ Content-Transfer-Encoding: {content_encoding}
         if d_extract['status']:
             if self.lo_msg: b_status = True
             for message in self.lo_msg:
-                lstr_subject.append(message['Subject'])
-                lstr_to.append(message['Delivered-To'])
-                lstr_date.append(message['Date'])
+                # lstr_subject.append(message['Subject'])
+                # lstr_to.append(message['Delivered-To'])
+                # lstr_date.append(message['Date'])
+                lstr_subject.append(field_get(message, 'Subject'))
+                lstr_to.append(field_get(message, 'Delivered-To'))
+                lstr_date.append(field_get(message, 'Date'))
                 if message.is_multipart():
                     d_parts:dict = self.multipart_separateAttachments(message)
                     lstr_msgBody.append(d_parts['textBody'])
@@ -542,10 +557,11 @@ Content-Transfer-Encoding: {content_encoding}
             Returns:
                 str: The (comma separated) string (list) of recipients
             """
-            str_ret         = ""
-            l_to : list     = []
+            str_ret:str     = ""
+            l_to:list       = []
             for msgi in l_target:
-                l_to.append(self.lo_msg[msgi]['Delivered-To'])
+                # pudb.set_trace()
+                l_to.append(field_get(self.lo_msg[msgi], 'Delivered-To'))
                 self.l_keysParsed.append(self.l_keysToParse[msgi])
             str_ret         = ','.join(l_to)
             return str_ret
@@ -583,6 +599,7 @@ Content-Transfer-Encoding: {content_encoding}
                 # only.
                 if lists_haveEqualValues(['l_date', 'l_date'], idx):
                     self.ld_m365.append(self.d_m365.copy())
+                    # pudb.set_trace()
                     self.ld_m365[idx]['subject']      = get('list', 'key', 'l_subject', idx)
                     self.ld_m365[idx]['to']           = recipients_get(get('list', 'value', 'l_date', idx))
                     self.ld_m365[idx]['attachments']  = attachments_get(get('list', 'value', 'l_date', idx))
