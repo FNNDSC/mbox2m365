@@ -1,36 +1,60 @@
-import sys
-from datetime import datetime
-import asyncore
-from smtpd import SMTPServer
-import mailbox
-from email.parser import BytesParser
-from email.policy import default
+import  asyncio
+from    aiosmtpd import    controller
+import  mailbox
+import  os
 
+class MboxMessageHandler:
+    def __init__(self, mbox_path):
+        self.mbox_path = mbox_path
 
-class EmlServer(SMTPServer):
-    no = 0
-    def process_message(self, peer, mailfrom, rcpttos, data, **kwargs):
-        filename = '%s-%d.eml' % (datetime.now().strftime('%Y%m%d%H%M%S'),
-            self.no)
-        filename = '/home/rudolph/Mail/rudolph'
-
-        mbox = mailbox.mbox(filename, factory=BytesParser(policy=default).parse)
-        mbox.add(data)
-        #print(filename)
-        #f = open(filename, 'ab')
-        #f.write(data)
-        #f.close
-        print('%s saved.' % filename)
-        self.no += 1
+    async def handle_DATA(self, server, session, envelope):
+        # Save the message to an mbox file
+        mbox = mailbox.mbox(self.mbox_path, create=True)
+        mbox.add(envelope.content)
         mbox.flush()
+        mbox.close()
 
-def run(port = 1025):
-    EmlServer(('localhost', port), None)
-    try:
-        asyncore.loop()
-    except KeyboardInterrupt:
-        pass
+        return '250 Message accepted for delivery'
 
 if __name__ == '__main__':
-    run(int(sys.argv[1]))
+    import argparse
+    parser = argparse.ArgumentParser(description='Mail sink server')
+    parser.add_argument('--mdir',
+                        required    = False,
+                        help        = 'Output mbox directory',
+                        default     = '/tmp/mail')
+    parser.add_argument('--mbox',
+                        required    = False,
+                        help        = 'Output mbox file',
+                        default     = 'messages.mbox')
+    parser.add_argument('--port',
+                        required    = False,
+                        help        = 'Listener port',
+                        default     = 22225)
+    args = parser.parse_args()
+
+    # Create the mbox directory if it doesn't exist
+    print(f"Checking/creating mbox directory: {args.mdir}")
+    os.makedirs(args.mdir, exist_ok=True)
+
+    # Set up the asyncio event loop
+    loop = asyncio.get_event_loop()
+
+    # Start the SMTP server
+    mbox_path = os.path.join(args.mdir, args.mbox)
+    handler = MboxMessageHandler(mbox_path)
+    controller = controller.Controller(handler, hostname='localhost', port=args.port)
+
+    try:
+        print(f"SMTP server is running. Listening on port {args.port}.")
+        print(f"All email routed through this server will simply be saved to {args.mdir}/{args.mbox}.")
+        controller.start()
+#        loop.run_until_complete(controller.start())
+        loop.run_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        controller.stop()
+#        loop.run_until_complete(controller.stop())
+        loop.close()
 
