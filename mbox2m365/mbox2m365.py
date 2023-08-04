@@ -599,8 +599,13 @@ Content-Transfer-Encoding: {content_encoding}
                 # only.
                 if lists_haveEqualValues(['l_date', 'l_date'], idx):
                     self.ld_m365.append(self.d_m365.copy())
-                    # pudb.set_trace()
-                    self.ld_m365[idx]['subject']      = get('list', 'key', 'l_subject', idx)
+                    # If there are less "subjects" than messages
+                    # (N messages all with the same subject, use
+                    # the first subject)
+                    try:
+                        self.ld_m365[idx]['subject']      = get('list', 'key', 'l_subject', idx)
+                    except:
+                        self.ld_m365[idx]['subject']      = get('list', 'key', 'l_subject', 0)
                     self.ld_m365[idx]['to']           = recipients_get(get('list', 'value', 'l_date', idx))
                     self.ld_m365[idx]['attachments']  = attachments_get(get('list', 'value', 'l_date', idx))
                     self.ld_m365[idx]['bodyContents'] = get('list', 'key', 'l_body', idx)
@@ -658,6 +663,7 @@ Content-Transfer-Encoding: {content_encoding}
                       m365message['to'],
                       m365message['bodyContents']
                     )
+            str_m365 = ''.join(str_m365.split(r'\r'))
             if len(m365message['attachments']):
                 for attachment in m365message['attachments']:
                     str_m365 += ' --attachment "' + str(self.configPath / Path(attachment)) + '"'
