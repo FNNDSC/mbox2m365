@@ -173,7 +173,7 @@ For the ``main.cf`` file, do
 # Assuming you are still in the /etc/postfix dir in a sudo bash shell...
 cp main.cf main.cf.orig
 echo "mydomain = pangea.net" >> main.cf
-echo "luser_relay = rudolph@pangea.net"
+echo "luser_relay = rudolph@pangea.net" >> main.cf
 echo "transport_maps = hash:/etc/postfix/transport" >> main.cf
 ```
 
