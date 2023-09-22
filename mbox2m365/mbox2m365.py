@@ -43,6 +43,17 @@ def field_get(message:dict, field:str) -> str:
             ret = str(message.get(field))
     return ret
 
+def fields_get(message:dict, l_field:list, sep:str = "") -> str:
+    ret:str     = ""
+    val:str     = ""
+    for field in l_field:
+        val     = field_get(message, field)
+        if val and val != 'None':
+            if ret:
+                ret += f"{sep}{val}"
+            else:
+                ret += val
+    return ret
 
 class Mbox2m365(object):
     """
@@ -545,11 +556,14 @@ Content-Transfer-Encoding: {content_encoding}
                     b_equal = False
             return b_equal
 
-        def recipient_sanitize(address:str) -> str:
-            email_pattern = r'<([^>]+)>|([^\s@]+@[^\s@]+\.[^\s@]+)'
+        def recipient_sanitize(address:str) -> list[str]:
+            email_pattern = r'<([^>]+)>|([^\s,]+@[^\s,]+)'
             matches = re.findall(email_pattern, address)
-            email_addresses = [match[0] if match[0] else match[1] for match in matches]
-            return email_addresses[0]
+            email_addresses = [
+                                match[0] if match[0]
+                                    else match[1] for match in matches if match[0] or match[1]
+                            ]
+            return email_addresses
 
         def recipients_get(l_target : list) -> str:
             """For each o_msg index in l_target, create a compound
@@ -566,9 +580,10 @@ Content-Transfer-Encoding: {content_encoding}
             str_ret:str     = ""
             l_to:list       = []
             for msgi in l_target:
-                # pudb.set_trace()
-                l_to.append(recipient_sanitize(
-                                field_get(self.lo_msg[msgi], 'Delivered-To'))
+                #pudb.set_trace()
+                l_to.extend(recipient_sanitize(
+                                fields_get(self.lo_msg[msgi],
+                                          ['Delivered-To', 'Cc', 'Bcc'], ","))
                             )
                 self.l_keysParsed.append(self.l_keysToParse[msgi])
             str_ret         = ','.join(l_to)
