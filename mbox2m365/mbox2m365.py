@@ -90,10 +90,10 @@ class Mbox2m365(object):
         self.version            : str   = self.args
         self.tic_start          : float =  0.0
         self.verbosityLevel     : int   = -1
-        self.configPath         : Path  = '/'
-        self.keyParsedFile      : Path  = 'someFile.json'
-        self.transmissionCmd    : Path  = 'someFile.cmd'
-        self.emailFile          : Path  = 'someFile.txt'
+        self.configPath         : Path  = Path('/')
+        self.keyParsedFile      : Path  = Path('someFile.json')
+        self.transmissionCmd    : Path  = Path('someFile.cmd')
+        self.emailFile          : Path  = Path('someFile.txt')
         self.l_attachments      : list  = []
         self.l_keysParsed       : list  = []
         self.l_keysInMbox       : list  = []
@@ -103,7 +103,7 @@ class Mbox2m365(object):
         self.dp                 = None
         self.log                = None
         self.mbox               = None
-        self.mboxPath           : Path  = 'mbox'
+        self.mboxPath           : Path  = Path('mbox')
         self.lo_msg             : list  = [] # list of objects of messages
         self.d_m365             : dict  = {}
         self.ld_m365            : list  = []
@@ -545,6 +545,12 @@ Content-Transfer-Encoding: {content_encoding}
                     b_equal = False
             return b_equal
 
+        def recipient_sanitize(address:str) -> str:
+            email_pattern = r'<([^>]+)>|([^\s@]+@[^\s@]+\.[^\s@]+)'
+            matches = re.findall(email_pattern, address)
+            email_addresses = [match[0] if match[0] else match[1] for match in matches]
+            return email_addresses[0]
+
         def recipients_get(l_target : list) -> str:
             """For each o_msg index in l_target, create a compound
             comma separated list of recipients
@@ -561,7 +567,9 @@ Content-Transfer-Encoding: {content_encoding}
             l_to:list       = []
             for msgi in l_target:
                 # pudb.set_trace()
-                l_to.append(field_get(self.lo_msg[msgi], 'Delivered-To'))
+                l_to.append(recipient_sanitize(
+                                field_get(self.lo_msg[msgi], 'Delivered-To'))
+                            )
                 self.l_keysParsed.append(self.l_keysToParse[msgi])
             str_ret         = ','.join(l_to)
             return str_ret
@@ -657,7 +665,7 @@ Content-Transfer-Encoding: {content_encoding}
             str_m365    : str   = ""
             str_m365    = """#!/bin/bash
 
-            m365 outlook mail send -s '%s' -t %s --bodyContents '%s'""" % \
+            m365 outlook mail send -s '%s' -t '%s' --bodyContents '%s'""" % \
                     (
                       m365message['subject'],
                       m365message['to'],
