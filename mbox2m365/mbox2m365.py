@@ -698,6 +698,12 @@ Content-Transfer-Encoding: {content_encoding}
                 f.write(f'%s' % str_content)
             self.transmissionCmd.chmod(0o755)
 
+        def execstr_build(input:Path) -> str:
+            ret:str             = ""
+            t_parts:tuple       = input.parts
+            ret                 = '/'.join(['"{0}"'.format(arg) if ' ' in arg else arg for arg in t_parts])
+            return ret
+
         b_status        : bool  = False
         d_m365          : dict  = {}
         ld_m365         : list  = []
@@ -711,7 +717,10 @@ Content-Transfer-Encoding: {content_encoding}
                 baseFileName    = self.urlify(m365message['subject'])
                 bodyToFile_check(m365message)
                 txscript_save(txscript_content(m365message))
-                d_m365  = shell.job_run(str(self.transmissionCmd))
+                test    = execstr_build(self.transmissionCmd)
+                d_m365  = shell.job_run(
+                        execstr_build(self.transmissionCmd)
+                )
                 self.log(
                     "Transmitted message (%s), return code '%s', recipients '%s'" %\
                          (m365message['bodyHash'],
