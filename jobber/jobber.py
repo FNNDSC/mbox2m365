@@ -8,6 +8,7 @@ import  subprocess
 import  os
 import  pudb
 import  json
+import  shlex
 
 class jobber:
 
@@ -104,7 +105,7 @@ class jobber:
         str_stdout      : str   = ""
 
         p = subprocess.Popen(
-                    str_cmd.split(),
+                    shlex.split(str_cmd),
                     stdout      = subprocess.PIPE,
                     stderr      = subprocess.PIPE,
         )
