@@ -2,7 +2,9 @@
 
 [project]
 name            = "mbox2m365"
-version         = "3.2.8"
+version         = "3.2.10"
+dynamic         = ["description", "readme", "license", "authors", "scripts", "dependencies"]
+
 
 [build-system]
 requires        = ["setuptools>=42", "wheel"]   # PEP 508 specifications.
