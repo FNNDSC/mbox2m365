@@ -2,4 +2,6 @@ appdirs
 pudb
 pfmisc
 aiosmtpd
+pydantic_settings
+
 
