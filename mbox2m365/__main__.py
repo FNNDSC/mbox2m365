@@ -7,25 +7,23 @@
 #                        dev@babyMRI.org
 #
 
-import  sys, os
-import  pudb
+import sys, os
+import pudb
 
-try:
-    from    .               import mbox2m365
-    from    .               import __pkg, __version__
-except:
-    from mbox2m365          import Mbox2m365
-    from __init__           import __pkg, __version__
-from    argparse            import RawTextHelpFormatter
-from    argparse            import ArgumentParser
+from mbox2m365 import mbox2m365
+from mbox2m365 import __version__, __pkg
+from argparse import RawTextHelpFormatter
+from argparse import ArgumentParser
 
-import  pfmisc
-from    pfmisc._colors      import Colors
-from    pfmisc              import other
+import pfmisc
+from pfmisc._colors import Colors
+from pfmisc import other
 
-import  json
+import json
 
-str_desc = Colors.CYAN + r"""
+str_desc = (
+    Colors.CYAN
+    + r"""
 
 
                         _               ___            ____    __ _____
@@ -43,8 +41,11 @@ str_desc = Colors.CYAN + r"""
         file for a message, and then transmits that message using an authent-
         icated m365 layer.
 
-                             -- version """ + \
-             Colors.YELLOW + __version__ + Colors.CYAN + """ --
+                             -- version """
+    + Colors.YELLOW
+    + __version__
+    + Colors.CYAN
+    + """ --
 
         While useful in its own right as a standalone program, `mbox2m365` is
         most optimally applied as part of a properly configured `postfix` mail
@@ -52,7 +53,9 @@ str_desc = Colors.CYAN + r"""
         and by monitoring changes in the mbox file, it is possible to allow
 
 
-""" + Colors.NO_COLOUR
+"""
+    + Colors.NO_COLOUR
+)
 
 package_CLIcore = """
         [--inputDir <inputDir>]                                                 \\
@@ -66,13 +69,13 @@ package_CLIcore = """
         [--json]
 """
 
-package_CLIself = '''
+package_CLIself = """
         --mbox <mbox>                                                           \\
         [--parseMessageIndices <M,N,...>]                                       \\
         [--b64_encode]                                                          \\
         [--sendFromFile]                                                        \\
         [--waitForStragglers <waitSecondsFirst>]                                \\
-        [--cleanUp]                                                             \\'''
+        [--cleanUp]                                                             \\"""
 
 package_argSynopsisSelf = """
         --mbox <mbox>
@@ -144,31 +147,41 @@ package_argSynopsisCore = """
                     - write
 """
 
-def synopsis(ab_shortOnly = False):
+
+def synopsis(ab_shortOnly=False):
     scriptName = os.path.basename(sys.argv[0])
-    shortSynopsis =  """
+    shortSynopsis = (
+        """
     NAME
 
         mbox2m365
 
     SYNOPSIS
 
-        mbox2m365                                                               \\""" + package_CLIself + package_CLIcore + """
+        mbox2m365                                                               \\"""
+        + package_CLIself
+        + package_CLIcore
+        + """
 
     BRIEF EXAMPLE
 
         cd /var/mail
         find rudolph | entr mbox2m365 --inputFile rudolph
     """
+    )
 
-    description =  '''
+    description = (
+        """
     DESCRIPTION
 
         ``mbox2m365`` allows for selective filtering of a message in an mbox
         format mail file and the re-transmission of that message using Outlook
         via the ``m365`` command line utility tool.
 
-    ARGS ''' + package_argSynopsisCore + package_argSynopsisSelf + '''
+    ARGS """
+        + package_argSynopsisCore
+        + package_argSynopsisSelf
+        + """
 
 
     EXAMPLES
@@ -178,101 +191,115 @@ def synopsis(ab_shortOnly = False):
                                       --b64_encode --sendFromFile               \\
                                       --cleanUp --waitForStragglers 10
 
-    '''
+    """
+    )
 
     if ab_shortOnly:
         return shortSynopsis
     else:
         return shortSynopsis + description
 
-parserCore  = ArgumentParser(description        = 'Core I/O',
-                             formatter_class    = RawTextHelpFormatter,
-                             add_help           = False)
-parserSelf  = ArgumentParser(description        = 'Self specific',
-                             formatter_class    = RawTextHelpFormatter,
-                             add_help           = False)
 
-parserSelf.add_argument("--mbox",
-                    help    = "the mbox file to analze",
-                    dest    = 'mbox',
-                    default = '')
-parserCore.add_argument("--b64_encode",
-                    help    = "encode all attachments as explicit inline base64",
-                    dest    = 'b64_encode',
-                    action  = 'store_true',
-                    default = False)
-parserCore.add_argument("--cleanUp",
-                    help    = "clean up all operational files generated during execution",
-                    dest    = 'cleanUp',
-                    action  = 'store_true',
-                    default = False)
-parserCore.add_argument("--sendFromFile",
-                    help    = "save the email to a file first, and then transmit this file",
-                    dest    = 'sendFromFile',
-                    action  = 'store_true',
-                    default = False)
-parserSelf.add_argument("--waitForStragglers",
-                    help    = "wait buffer before starting processing",
-                    dest    = 'waitForStragglers',
-                    default = '1')
-parserSelf.add_argument("--parseMessageIndices",
-                    help    = "parse messages at given indices",
-                    dest    = 'parseMessageIndices',
-                    default = '')
-parserSelf.add_argument("--printElapsedTime",
-                    help    = "print program run time",
-                    dest    = 'printElapsedTime',
-                    action  = 'store_true',
-                    default = False)
+parserCore = ArgumentParser(
+    description="Core I/O", formatter_class=RawTextHelpFormatter, add_help=False
+)
+parserSelf = ArgumentParser(
+    description="Self specific", formatter_class=RawTextHelpFormatter, add_help=False
+)
 
-parserCore.add_argument("--inputDir",
-                    help    = "input dir",
-                    dest    = 'inputDir',
-                    default = '/var/mail')
-parserCore.add_argument("--inputFile",
-                    help    = "input file",
-                    dest    = 'inputFile',
-                    default = '')
-parserCore.add_argument("--outputDir",
-                    help    = "output image directory",
-                    dest    = 'outputDir',
-                    default = '')
-parserCore.add_argument("--man",
-                    help    = "man",
-                    dest    = 'man',
-                    action  = 'store_true',
-                    default = False)
-parserCore.add_argument("--synopsis",
-                    help    = "short synopsis",
-                    dest    = 'synopsis',
-                    action  = 'store_true',
-                    default = False)
-parserCore.add_argument("--json",
-                    help    = "output final return in json",
-                    dest    = 'json',
-                    action  = 'store_true',
-                    default = False)
-parserCore.add_argument("--verbosity",
-                    help    = "verbosity level for app",
-                    dest    = 'verbosity',
-                    default = "1")
-parserCore.add_argument('--version',
-                    help    = 'if specified, print version number',
-                    dest    = 'b_version',
-                    action  = 'store_true',
-                    default = False)
+parserSelf.add_argument(
+    "--mbox", help="the mbox file to analze", dest="mbox", default=""
+)
+parserCore.add_argument(
+    "--b64_encode",
+    help="encode all attachments as explicit inline base64",
+    dest="b64_encode",
+    action="store_true",
+    default=False,
+)
+parserCore.add_argument(
+    "--cleanUp",
+    help="clean up all operational files generated during execution",
+    dest="cleanUp",
+    action="store_true",
+    default=False,
+)
+parserCore.add_argument(
+    "--sendFromFile",
+    help="save the email to a file first, and then transmit this file",
+    dest="sendFromFile",
+    action="store_true",
+    default=False,
+)
+parserSelf.add_argument(
+    "--waitForStragglers",
+    help="wait buffer before starting processing",
+    dest="waitForStragglers",
+    default="1",
+)
+parserSelf.add_argument(
+    "--parseMessageIndices",
+    help="parse messages at given indices",
+    dest="parseMessageIndices",
+    default="",
+)
+parserSelf.add_argument(
+    "--printElapsedTime",
+    help="print program run time",
+    dest="printElapsedTime",
+    action="store_true",
+    default=False,
+)
+
+parserCore.add_argument(
+    "--inputDir", help="input dir", dest="inputDir", default="/var/mail"
+)
+parserCore.add_argument("--inputFile", help="input file", dest="inputFile", default="")
+parserCore.add_argument(
+    "--outputDir", help="output image directory", dest="outputDir", default=""
+)
+parserCore.add_argument(
+    "--man", help="man", dest="man", action="store_true", default=False
+)
+parserCore.add_argument(
+    "--synopsis",
+    help="short synopsis",
+    dest="synopsis",
+    action="store_true",
+    default=False,
+)
+parserCore.add_argument(
+    "--json",
+    help="output final return in json",
+    dest="json",
+    action="store_true",
+    default=False,
+)
+parserCore.add_argument(
+    "--verbosity", help="verbosity level for app", dest="verbosity", default="1"
+)
+parserCore.add_argument(
+    "--version",
+    help="if specified, print version number",
+    dest="b_version",
+    action="store_true",
+    default=False,
+)
+
 
 def main(argv=None):
-    parser  = ArgumentParser(description        = str_desc,
-                             formatter_class    = RawTextHelpFormatter,
-                             parents            = [parserCore, parserSelf])
+    parser = ArgumentParser(
+        description=str_desc,
+        formatter_class=RawTextHelpFormatter,
+        parents=[parserCore, parserSelf],
+    )
     args = parser.parse_args()
     if args.man or args.synopsis:
         print(str_desc)
         if args.man:
-            str_help     = synopsis(False)
+            str_help = synopsis(False)
         else:
-            str_help     = synopsis(True)
+            str_help = synopsis(True)
         print(str_help)
         return 1
 
@@ -280,29 +307,30 @@ def main(argv=None):
         print("Name:    %s\nVersion: %s" % (__pkg.name, __version__))
         return 1
 
-    args.version        = __version__
-    args.name           = __pkg.name
-    args.desc           = synopsis(True)
+    args.version = __version__
+    args.name = __pkg.name
+    args.desc = synopsis(True)
 
-    try:
-        mbox_2_m365         = Mbox2m365(vars(args))
-    except:
-        mbox_2_m365         = mbox2m365.Mbox2m365(vars(args))
-    mbox_2_m365.log("%s:%s waking up!" % (__pkg.name, __version__), comms = 'tx')
-    mbox_2_m365.log('Messaging object successfully created.')
+    # try:
+    #     mbox_2_m365 = Mbox2m365(vars(args))
+    # except:
+    #     mbox_2_m365 = mbox2m365.Mbox2m365(vars(args))
+    mbox_2_m365 = mbox2m365.Mbox2m365(vars(args))
+    mbox_2_m365.log("%s:%s waking up!" % (__pkg.name, __version__), comms="tx")
+    mbox_2_m365.log("Messaging object successfully created.")
 
     # And now run it!
-    d_mbox2m365         = mbox_2_m365.run(timerStart = True)
+    d_mbox2m365 = mbox_2_m365.run(timerStart=True)
 
     if args.printElapsedTime:
-        mbox_2_m365.log(
-                "Elapsed time = %f seconds" %
-                d_mbox2m365['runTime']
-        )
+        mbox_2_m365.log("Elapsed time = %f seconds" % d_mbox2m365["runTime"])
 
-    mbox_2_m365.log("%s:%s all done and going to sleep!" % (__pkg.name, __version__), comms = 'rx')
+    mbox_2_m365.log(
+        "%s:%s all done and going to sleep!" % (__pkg.name, __version__), comms="rx"
+    )
 
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())
