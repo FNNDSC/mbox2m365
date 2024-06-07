@@ -17,6 +17,7 @@ from pfmisc import other
 from pfmisc import error
 
 import pudb
+from pudb.remote import set_trace
 import mailbox
 from email.utils import make_msgid
 
@@ -699,14 +700,42 @@ Content-Transfer-Encoding: {content_encoding}
                 self.body_saveToFile(m365message)
                 m365message["bodyContents"] = f"@{self.emailFile}"
 
+        def remove_quotes_from_emails(text):
+            return re.sub(
+                r'["\']([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})["\']',
+                r"\1",
+                text,
+            )
+
+        def to_cleanup(text) -> str:
+            ret: str = ""
+            # Remove quotes from around email addresses
+            text = re.sub(
+                r'["\']([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})["\']',
+                r"\1",
+                text,
+            )
+
+            # Find all email addresses in the text
+            emails = re.findall(
+                r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", text
+            )
+
+            # Keep only unique emails (first occurrence)
+            unique_emails = dict.fromkeys(emails).keys()
+            ret = ",".join(list(unique_emails))
+            return ret
+
         def txscript_content(m365message) -> str:
             str_m365: str = ""
             str_subj: str = m365message["subject"].replace("'", "")
+            # set_trace(term_size=(254, 60), host="0.0.0.0")
+            to: str = to_cleanup(m365message["to"])
             str_m365 = """#!/bin/bash
 
             m365 outlook mail send -s '%s' -t '%s' --bodyContents '%s'""" % (
                 str_subj,
-                m365message["to"],
+                to,
                 m365message["bodyContents"],
             )
             str_m365 = "".join(str_m365.split(r"\r"))
