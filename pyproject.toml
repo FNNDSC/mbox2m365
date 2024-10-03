@@ -2,7 +2,7 @@
 
 [project]
 name            = "mbox2m365"
-version         = "3.2.14"
+version         = "3.2.16"
 dynamic         = ["description", "readme", "license", "authors", "scripts", "dependencies"]
 
 
