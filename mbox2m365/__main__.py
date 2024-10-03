@@ -71,6 +71,7 @@ package_CLIcore = """
 
 package_CLIself = """
         --mbox <mbox>                                                           \\
+        [--playwright <notificationFile>]                                       \\
         [--parseMessageIndices <M,N,...>]                                       \\
         [--b64_encode]                                                          \\
         [--sendFromFile]                                                        \\
@@ -80,6 +81,10 @@ package_CLIself = """
 package_argSynopsisSelf = """
         --mbox <mbox>
         The mbox file to process.
+
+        [--playwright <notificationFile>]
+        If specified, assume playwright handling of Outlook, using 
+        <notificationFile>.
 
         [--parseMessageIndices <M,N,...>]
         Instead of processing "new" messages in the mbox, explicitly
@@ -249,6 +254,12 @@ parserSelf.add_argument(
     dest="printElapsedTime",
     action="store_true",
     default=False,
+)
+parserSelf.add_argument(
+    "--playwright",
+    help="if specified, assume playwright handling of outlook transmission and not m365",
+    dest="playwright",
+    default="",
 )
 
 parserCore.add_argument(
