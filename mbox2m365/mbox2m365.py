@@ -726,7 +726,16 @@ Content-Transfer-Encoding: {content_encoding}
             ret = ",".join(list(unique_emails))
             return ret
 
-        def txscript_content(m365message) -> str:
+        def txscript_contentplaywright(m365message) -> str:
+            str_m365: str = ""
+            str_subj: str = m365message["subject"].replace("\r", "").replace("\n", "")
+            to: str = to_cleanup(m365message["to"]).replace("\r", "").replace("\n", "")
+            str_m365 = f"""{to}
+{str_subj}
+{self.emailFile}"""
+            return str_m365
+
+        def txscript_contentm365(m365message) -> str:
             str_m365: str = ""
             str_subj: str = m365message["subject"].replace("'", "")
             # set_trace(term_size=(254, 60), host="0.0.0.0")
@@ -749,10 +758,14 @@ Content-Transfer-Encoding: {content_encoding}
             return str_m365
 
         def txscript_save(str_content) -> None:
-            self.transmissionCmd = self.configPath / Path(baseFileName + "_tx.cmd")
+            if self.args["playwright"]:
+                self.transmissionCmd = self.args["playwright"]
+            else:
+                self.transmissionCmd = self.configPath / Path(baseFileName + "_tx.cmd")
             with open(self.transmissionCmd, "w") as f:
-                f.write(f"%s" % str_content)
-            self.transmissionCmd.chmod(0o755)
+                f.write(f"{str_content}")
+            if not self.args["playwright"]:
+                self.transmissionCmd.chmod(0o755)
 
         def execstr_build(input: Path) -> str:
             ret: str = ""
@@ -774,13 +787,20 @@ Content-Transfer-Encoding: {content_encoding}
                 b_status = True
                 baseFileName = self.urlify(m365message["subject"])
                 bodyToFile_check(m365message)
-                txscript_save(txscript_content(m365message))
-                test = execstr_build(self.transmissionCmd)
-                d_m365 = shell.job_run(execstr_build(self.transmissionCmd))
-                self.log(
-                    "Transmitted message (%s), return code '%s', recipients '%s'"
-                    % (m365message["bodyHash"], d_m365["returncode"], m365message["to"])
-                )
+                if len(self.args["playwright"]):
+                    txscript_save(txscript_contentplaywright(m365message))
+                else:
+                    txscript_save(txscript_contentm365(m365message))
+                    test = execstr_build(self.transmissionCmd)
+                    d_m365 = shell.job_run(execstr_build(self.transmissionCmd))
+                    self.log(
+                        "Transmitted message (%s), return code '%s', recipients '%s'"
+                        % (
+                            m365message["bodyHash"],
+                            d_m365["returncode"],
+                            m365message["to"],
+                        )
+                    )
                 b_status = True
                 ld_m365.append(d_m365.copy())
                 cleanUp()
